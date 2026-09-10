@@ -12,7 +12,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DocuCalendar.Infrastructure.Migrations
 {
     [DbContext(typeof(CalendarDbContext))]
-    [Migration("20260910082105_InitialSchema")]
+    [Migration("20260910134835_InitialSchema")]
     partial class InitialSchema
     {
         /// <inheritdoc />
@@ -20,6 +20,7 @@ namespace DocuCalendar.Infrastructure.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
+                .HasDefaultSchema("calendar")
                 .HasAnnotation("ProductVersion", "9.0.1")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
@@ -95,7 +96,7 @@ namespace DocuCalendar.Infrastructure.Migrations
 
                     b.HasIndex("TenantId", "StartsAt");
 
-                    b.ToTable("Appointments");
+                    b.ToTable("Appointments", "calendar");
                 });
 
             modelBuilder.Entity("DocuCalendar.Domain.Entities.BusyBlock", b =>
@@ -137,7 +138,7 @@ namespace DocuCalendar.Infrastructure.Migrations
 
                     b.HasIndex("CalendarId", "Source", "ExternalId");
 
-                    b.ToTable("BusyBlocks");
+                    b.ToTable("BusyBlocks", "calendar");
                 });
 
             modelBuilder.Entity("DocuCalendar.Domain.Entities.ContextDefault", b =>
@@ -165,7 +166,7 @@ namespace DocuCalendar.Infrastructure.Migrations
                     b.HasIndex("TenantId", "TenantContextId")
                         .IsUnique();
 
-                    b.ToTable("ContextDefaults");
+                    b.ToTable("ContextDefaults", "calendar");
                 });
 
             modelBuilder.Entity("DocuCalendar.Domain.Entities.KnownContext", b =>
@@ -187,7 +188,7 @@ namespace DocuCalendar.Infrastructure.Migrations
 
                     b.HasKey("TenantId", "TenantContextId");
 
-                    b.ToTable("KnownContexts");
+                    b.ToTable("KnownContexts", "calendar");
                 });
 
             modelBuilder.Entity("DocuCalendar.Domain.Entities.StaffCalendar", b =>
@@ -257,7 +258,7 @@ namespace DocuCalendar.Infrastructure.Migrations
 
                     b.HasIndex("TenantId", "Active");
 
-                    b.ToTable("Calendars");
+                    b.ToTable("Calendars", "calendar");
                 });
 
             modelBuilder.Entity("DocuCalendar.Domain.Entities.TenantRegistration", b =>
@@ -291,7 +292,7 @@ namespace DocuCalendar.Infrastructure.Migrations
 
                     b.HasKey("TenantId");
 
-                    b.ToTable("Tenants");
+                    b.ToTable("Tenants", "calendar");
                 });
 #pragma warning restore 612, 618
         }

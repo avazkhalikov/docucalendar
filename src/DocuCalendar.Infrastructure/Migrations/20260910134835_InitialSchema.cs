@@ -11,8 +11,12 @@ namespace DocuCalendar.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            migrationBuilder.EnsureSchema(
+                name: "calendar");
+
             migrationBuilder.CreateTable(
                 name: "Appointments",
+                schema: "calendar",
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
@@ -37,6 +41,7 @@ namespace DocuCalendar.Infrastructure.Migrations
 
             migrationBuilder.CreateTable(
                 name: "BusyBlocks",
+                schema: "calendar",
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
@@ -55,6 +60,7 @@ namespace DocuCalendar.Infrastructure.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Calendars",
+                schema: "calendar",
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
@@ -78,6 +84,7 @@ namespace DocuCalendar.Infrastructure.Migrations
 
             migrationBuilder.CreateTable(
                 name: "ContextDefaults",
+                schema: "calendar",
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
@@ -93,6 +100,7 @@ namespace DocuCalendar.Infrastructure.Migrations
 
             migrationBuilder.CreateTable(
                 name: "KnownContexts",
+                schema: "calendar",
                 columns: table => new
                 {
                     TenantId = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
@@ -107,6 +115,7 @@ namespace DocuCalendar.Infrastructure.Migrations
 
             migrationBuilder.CreateTable(
                 name: "Tenants",
+                schema: "calendar",
                 columns: table => new
                 {
                     TenantId = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
@@ -123,41 +132,49 @@ namespace DocuCalendar.Infrastructure.Migrations
 
             migrationBuilder.CreateIndex(
                 name: "IX_Appointments_CalendarId_StartsAt",
+                schema: "calendar",
                 table: "Appointments",
                 columns: new[] { "CalendarId", "StartsAt" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Appointments_TenantId_StartsAt",
+                schema: "calendar",
                 table: "Appointments",
                 columns: new[] { "TenantId", "StartsAt" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Appointments_VisitorPhone",
+                schema: "calendar",
                 table: "Appointments",
                 column: "VisitorPhone");
 
             migrationBuilder.CreateIndex(
                 name: "IX_BusyBlocks_CalendarId_Source_ExternalId",
+                schema: "calendar",
                 table: "BusyBlocks",
                 columns: new[] { "CalendarId", "Source", "ExternalId" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_BusyBlocks_CalendarId_StartsAt",
+                schema: "calendar",
                 table: "BusyBlocks",
                 columns: new[] { "CalendarId", "StartsAt" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Calendars_OwnerUserId",
+                schema: "calendar",
                 table: "Calendars",
                 column: "OwnerUserId");
 
             migrationBuilder.CreateIndex(
                 name: "IX_Calendars_TenantId_Active",
+                schema: "calendar",
                 table: "Calendars",
                 columns: new[] { "TenantId", "Active" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_ContextDefaults_TenantId_TenantContextId",
+                schema: "calendar",
                 table: "ContextDefaults",
                 columns: new[] { "TenantId", "TenantContextId" },
                 unique: true);
@@ -167,22 +184,28 @@ namespace DocuCalendar.Infrastructure.Migrations
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.DropTable(
-                name: "Appointments");
+                name: "Appointments",
+                schema: "calendar");
 
             migrationBuilder.DropTable(
-                name: "BusyBlocks");
+                name: "BusyBlocks",
+                schema: "calendar");
 
             migrationBuilder.DropTable(
-                name: "Calendars");
+                name: "Calendars",
+                schema: "calendar");
 
             migrationBuilder.DropTable(
-                name: "ContextDefaults");
+                name: "ContextDefaults",
+                schema: "calendar");
 
             migrationBuilder.DropTable(
-                name: "KnownContexts");
+                name: "KnownContexts",
+                schema: "calendar");
 
             migrationBuilder.DropTable(
-                name: "Tenants");
+                name: "Tenants",
+                schema: "calendar");
         }
     }
 }

@@ -14,8 +14,25 @@ public class CalendarDbContext : DbContext
     public DbSet<Appointment> Appointments => Set<Appointment>();
     public DbSet<KnownContext> KnownContexts => Set<KnownContext>();
 
+    /// <summary>
+    /// Every table this service owns lives under one schema of its own.
+    ///
+    /// The plan was a separate database, and that is still the right shape: this service would then
+    /// hold credentials that reach nothing but calendars. It shares a database instead because
+    /// creating one needs a Postgres superuser nobody could produce, and a schema was the closest
+    /// isolation available without it — the tables are namespaced, the migration history is
+    /// separate, and neither system's migrations can see the other's.
+    ///
+    /// What that costs, recorded so it is not forgotten: the connection string this service uses
+    /// also reaches the host application's data. Moving to a database of its own later is a
+    /// connection-string change plus a dump/restore of this one schema — no code changes.
+    /// </summary>
+    public const string SchemaName = "calendar";
+
     protected override void OnModelCreating(ModelBuilder b)
     {
+        b.HasDefaultSchema(SchemaName);
+
         b.Entity<TenantRegistration>(e =>
         {
             e.HasKey(t => t.TenantId);

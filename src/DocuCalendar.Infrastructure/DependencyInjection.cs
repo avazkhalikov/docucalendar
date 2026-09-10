@@ -11,7 +11,12 @@ public static class DependencyInjection
     public static IServiceCollection AddDocuCalendarInfrastructure(this IServiceCollection services, IConfiguration config)
     {
         var connectionString = config.GetConnectionString("DefaultConnection");
-        services.AddDbContext<CalendarDbContext>(options => options.UseNpgsql(connectionString));
+        services.AddDbContext<CalendarDbContext>(options => options.UseNpgsql(
+            connectionString,
+            // The migration history belongs to this service alone. Sharing a database means sharing
+            // it with another application's EF migrations, and one history table listing both would
+            // let either side's tooling believe the other's migrations were missing.
+            npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", CalendarDbContext.SchemaName)));
 
         services.AddScoped<BookingService>();
         services.AddScoped<TenantService>();

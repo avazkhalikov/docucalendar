@@ -35,6 +35,26 @@ POST /api/calendar/webhooks/booked ◄────── booking notifications (
 There is no password on this site. The only way in is a short-lived token Docurest signs for a
 user it has already authenticated; the only way to book is an API key Docurest was given once.
 
+## Where the data lives
+
+Every table is namespaced under a **`calendar` schema**, with its own EF migration history, and the
+migration creates that schema itself.
+
+It was designed to have a database of its own — that is still the right shape, because this service
+would then hold credentials reaching nothing but calendars. In production it shares the host
+application's database instead: creating a new one needs a Postgres superuser that could not be
+produced, and a schema was the closest isolation available without one. The cost is recorded rather
+than hidden: **the connection string this service uses also reaches the host application's data.**
+
+Moving to a dedicated database later is a connection-string change plus a dump/restore of this one
+schema. No code changes:
+
+```bash
+pg_dump -h 10.0.0.2 -U ragstudio -d ragdb2 -n calendar -f calendar.sql
+# create caldb + docucalendaruser as a superuser, then:
+psql -h 10.0.0.2 -U docucalendaruser -d caldb -f calendar.sql
+```
+
 ## Running it locally
 
 ```bash
