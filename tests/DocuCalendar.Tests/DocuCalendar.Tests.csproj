@@ -20,6 +20,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\DocuCalendar.Infrastructure\DocuCalendar.Infrastructure.csproj" />
+    <!-- The SSO token lives in the web layer and is the only way into this site — it gets tested. -->
+    <ProjectReference Include="..\..\src\DocuCalendar.WebApi\DocuCalendar.WebApi.csproj" />
   </ItemGroup>
 
 </Project>
