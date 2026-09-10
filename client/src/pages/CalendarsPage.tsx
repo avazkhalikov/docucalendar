@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Loader2, Plus, Save, CalendarClock, Archive, ChevronDown, ChevronRight, Info, BookOpen } from 'lucide-react';
-import { api, type CalendarRow, type Me } from '../api';
+import { api, type CalendarRow, type Me, type Person } from '../api';
 import WeekEditor from '../components/WeekEditor';
 
 export default function CalendarsPage({ me }: { me: Me }) {
@@ -12,6 +12,13 @@ export default function CalendarsPage({ me }: { me: Me }) {
   const [newLabel, setNewLabel] = useState('');
   const [newOwnerId, setNewOwnerId] = useState('');
   const [creating, setCreating] = useState(false);
+  const [people, setPeople] = useState<Person[]>([]);
+
+  useEffect(() => {
+    // A missing list is not an error — it just means Docurest has not pushed the team yet, and the
+    // picker falls back to "Mine", which is what a single-handed account wants anyway.
+    api.people().then((r) => setPeople(r.people)).catch(() => setPeople([]));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,16 +83,22 @@ export default function CalendarsPage({ me }: { me: Me }) {
                 className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#0b0b0f] border border-slate-300 dark:border-slate-700 text-sm"
               />
             </div>
-            <div className="min-w-[20rem]">
-              <label className="block text-[11px] text-slate-500 dark:text-slate-400 mb-1">
-                Docurest user id (leave empty to keep it yours)
-              </label>
-              <input
+            <div className="min-w-[16rem]">
+              <label className="block text-[11px] text-slate-500 dark:text-slate-400 mb-1">Whose calendar is it?</label>
+              <select
                 value={newOwnerId}
                 onChange={(e) => setNewOwnerId(e.target.value)}
-                placeholder="00000000-0000-0000-0000-000000000000"
-                className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#0b0b0f] border border-slate-300 dark:border-slate-700 text-sm font-mono"
-              />
+                className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#0b0b0f] border border-slate-300 dark:border-slate-700 text-sm"
+              >
+                <option value="">Mine</option>
+                {people
+                  .filter((p) => p.userId !== me.userId)
+                  .map((p) => (
+                    <option key={p.userId} value={p.userId}>
+                      {p.name}{p.role === 'owner' ? ' (owner)' : ''}
+                    </option>
+                  ))}
+              </select>
             </div>
             <button
               type="button"
@@ -98,8 +111,9 @@ export default function CalendarsPage({ me }: { me: Me }) {
           </div>
           <p className="mt-2 text-[11px] text-slate-400 flex items-start gap-1">
             <Info className="w-3.5 h-3.5 mt-px shrink-0" />
-            The user id decides who may edit it. Copy it from Docurest → Operators; leave it empty and the calendar is
-            yours to manage.
+            {people.length > 1
+              ? 'Whoever it belongs to can edit it and set their own hours; you can edit every calendar on the account.'
+              : 'Your team appears here automatically — open this site from Docurest once and the list arrives.'}
           </p>
         </div>
       )}
@@ -131,6 +145,7 @@ export default function CalendarsPage({ me }: { me: Me }) {
               onSaved={load}
               onError={setError}
               isOwner={me.role === 'owner'}
+              ownerName={people.find((p) => p.userId === row.ownerUserId)?.name}
             />
           ))}
         </div>
@@ -146,6 +161,7 @@ function CalendarCard({
   onSaved,
   onError,
   isOwner,
+  ownerName,
 }: {
   row: CalendarRow;
   expanded: boolean;
@@ -153,6 +169,7 @@ function CalendarCard({
   onSaved: () => Promise<void>;
   onError: (message: string) => void;
   isOwner: boolean;
+  ownerName?: string;
 }) {
   const [draft, setDraft] = useState(row);
   const [saving, setSaving] = useState(false);
@@ -204,7 +221,12 @@ function CalendarCard({
           {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </button>
         <span className="font-medium">{row.label}</span>
-        {row.mine && <span className="px-1.5 py-0.5 rounded text-[11px] bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-300">mine</span>}
+        {row.mine ? (
+          <span className="px-1.5 py-0.5 rounded text-[11px] bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-300">mine</span>
+        ) : ownerName ? (
+          // Whose day this is, by name — the roster is unreadable when every row looks the same.
+          <span className="px-1.5 py-0.5 rounded text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">{ownerName}</span>
+        ) : null}
         {!row.active && <span className="px-1.5 py-0.5 rounded text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-500">retired</span>}
         <span className="text-xs text-slate-400">
           {row.slotMinutes} min slots · up to {row.maxMinutes} min · {row.minLeadMinutes} min notice

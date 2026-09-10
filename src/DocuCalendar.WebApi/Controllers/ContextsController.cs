@@ -61,3 +61,60 @@ public sealed class ContextsController : ControllerBase
         public string? Domain { get; set; }
     }
 }
+
+/// <summary>
+/// The people on the account, so calendars are assigned by picking a colleague rather than by
+/// pasting an identifier nobody can see. Docurest pushes the list; this service never asks for it.
+/// </summary>
+[ApiController]
+[Route("api/people")]
+public sealed class PeopleController : ControllerBase
+{
+    private readonly CalendarDbContext _db;
+
+    public PeopleController(CalendarDbContext db) => _db = db;
+
+    [HttpPut]
+    [RequireApiKey]
+    public async Task<IActionResult> Replace([FromBody] List<PersonDto> body, CancellationToken ct)
+    {
+        var tenant = HttpContext.Tenant();
+        var existing = await _db.KnownPeople.Where(p => p.TenantId == tenant.TenantId).ToListAsync(ct);
+        _db.KnownPeople.RemoveRange(existing);
+
+        foreach (var item in body.Where(i => i.UserId != Guid.Empty))
+        {
+            _db.KnownPeople.Add(new KnownPerson
+            {
+                TenantId = tenant.TenantId,
+                UserId = item.UserId,
+                Name = string.IsNullOrWhiteSpace(item.Name) ? item.UserId.ToString() : item.Name!.Trim(),
+                Role = string.Equals(item.Role, "owner", StringComparison.OrdinalIgnoreCase) ? "owner" : "operator",
+            });
+        }
+
+        await _db.SaveChangesAsync(ct);
+        return Ok(new { count = body.Count });
+    }
+
+    [HttpGet]
+    [Authorize]
+    public async Task<IActionResult> List(CancellationToken ct)
+    {
+        var tenantId = User.FindFirst("tenantId")?.Value ?? string.Empty;
+        var people = await _db.KnownPeople.AsNoTracking()
+            .Where(p => p.TenantId == tenantId)
+            .OrderByDescending(p => p.Role == "owner")
+            .ThenBy(p => p.Name)
+            .Select(p => new { p.UserId, p.Name, p.Role })
+            .ToListAsync(ct);
+        return Ok(new { people });
+    }
+
+    public sealed class PersonDto
+    {
+        public Guid UserId { get; set; }
+        public string? Name { get; set; }
+        public string? Role { get; set; }
+    }
+}

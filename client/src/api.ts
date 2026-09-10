@@ -94,8 +94,16 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+export interface Person {
+  userId: string;
+  name: string;
+  role: 'owner' | 'operator';
+}
+
 export const api = {
   me: () => call<Me>('/session/me'),
+  /** The account's team, pushed here by Docurest — so a calendar is assigned by picking a name. */
+  people: () => call<{ people: Person[] }>('/people'),
   logout: () => call<{ signedOut: boolean }>('/session/logout', { method: 'POST' }),
 
   calendars: () => call<CalendarsResponse>('/calendars'),

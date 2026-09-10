@@ -13,6 +13,7 @@ public class CalendarDbContext : DbContext
     public DbSet<BusyBlock> BusyBlocks => Set<BusyBlock>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
     public DbSet<KnownContext> KnownContexts => Set<KnownContext>();
+    public DbSet<KnownPerson> KnownPeople => Set<KnownPerson>();
 
     /// <summary>
     /// Every table this service owns lives under one schema of its own.
@@ -75,6 +76,14 @@ public class CalendarDbContext : DbContext
             e.HasKey(k => new { k.TenantId, k.TenantContextId });
             e.Property(k => k.TenantId).HasMaxLength(100);
             e.Property(k => k.Domain).HasMaxLength(300).IsRequired();
+        });
+
+        b.Entity<KnownPerson>(e =>
+        {
+            e.HasKey(p => new { p.TenantId, p.UserId });
+            e.Property(p => p.TenantId).HasMaxLength(100);
+            e.Property(p => p.Name).HasMaxLength(200).IsRequired();
+            e.Property(p => p.Role).HasMaxLength(20).IsRequired().HasDefaultValue("operator");
         });
 
         b.Entity<BusyBlock>(e =>
