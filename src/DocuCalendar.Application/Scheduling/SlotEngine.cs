@@ -198,7 +198,11 @@ public static class SlotEngine
             instant = default;
             return false;
         }
-        instant = new DateTimeOffset(local, zone.GetUtcOffset(local));
+        // Normalised to UTC, not merely to the right instant. The field these values land in is
+        // called StartsAtUtc and Postgres rejects a timestamptz parameter carrying any other
+        // offset — so a slot built with +05:00 is the correct moment and still throws the moment
+        // it is round-tripped back through the API into a query.
+        instant = new DateTimeOffset(local, zone.GetUtcOffset(local)).ToUniversalTime();
         return true;
     }
 

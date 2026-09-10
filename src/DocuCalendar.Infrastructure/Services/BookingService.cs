@@ -78,6 +78,8 @@ public sealed class BookingService
         var minutes = SlotEngine.ClampDuration(rules, requestedMinutes);
         var zone = TenantService.ZoneOf(tenant);
         var now = DateTimeOffset.UtcNow;
+        // The wire may deliver "+05:00"; everything below stores and compares in UTC.
+        startUtc = startUtc.ToUniversalTime();
 
         await using var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
         try
@@ -136,6 +138,12 @@ public sealed class BookingService
     /// slot engine does not care which is which, and neither should a visitor.</summary>
     public async Task<List<Interval>> LoadBusyAsync(Guid calendarId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct)
     {
+        // Belt and braces: a caller may hand us an instant carrying a local offset (a time that
+        // came back out of the API and went round again), and Postgres will not accept one as a
+        // timestamptz parameter however correct the instant is.
+        fromUtc = fromUtc.ToUniversalTime();
+        toUtc = toUtc.ToUniversalTime();
+
         var blocks = await _db.BusyBlocks.AsNoTracking()
             .Where(b => b.CalendarId == calendarId && b.EndsAt > fromUtc && b.StartsAt < toUtc)
             .Select(b => new { b.StartsAt, b.EndsAt })

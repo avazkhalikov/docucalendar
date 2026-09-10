@@ -212,6 +212,26 @@ public class SlotEngineTests
     }
 
     [Fact]
+    public void EverySlotLeavesTheEngineInUtc()
+    {
+        // Not pedantry: these instants are round-tripped through JSON and handed back as query
+        // parameters, and Postgres refuses a timestamptz carrying any offset but zero. A slot
+        // built with +05:00 is the correct moment and still throws on the way into the database —
+        // which is exactly how it failed the first time it met a real server.
+        var slots = SlotEngine.GetSlots(Rules(), Tashkent, Array.Empty<Interval>(), EarlyThursday, days: 3);
+
+        Assert.NotEmpty(slots);
+        Assert.All(slots, s =>
+        {
+            Assert.Equal(TimeSpan.Zero, s.StartsAtUtc.Offset);
+            Assert.Equal(TimeSpan.Zero, s.EndsAtUtc.Offset);
+        });
+        // …and the moment is still right: 09:00 in a +05:00 zone is 04:00 UTC.
+        Assert.Equal(4, slots[0].StartsAtUtc.Hour);
+        Assert.Equal("Thu 10 Sep, 09:00", slots[0].Local);
+    }
+
+    [Fact]
     public void TheLocalStringIsWhatAPersonWouldSay()
     {
         var slots = SlotEngine.GetSlots(Rules(), Tashkent, Array.Empty<Interval>(), EarlyThursday, days: 1);
