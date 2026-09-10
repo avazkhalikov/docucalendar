@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
-import { CalendarDays, LogOut, Loader2, Users, CalendarClock, Share2, AlertTriangle } from 'lucide-react';
+import { CalendarDays, LogOut, Loader2, Users, CalendarClock, Share2, AlertTriangle, BookOpen } from 'lucide-react';
 import { api, ApiError, type Me } from './api';
 import CalendarsPage from './pages/CalendarsPage';
 import SchedulePage from './pages/SchedulePage';
 import RoutingPage from './pages/RoutingPage';
+import GuidePage from './pages/GuidePage';
 
 export default function App() {
   const [me, setMe] = useState<Me | null>(null);
@@ -62,6 +63,9 @@ export default function App() {
                 <span className="inline-flex items-center gap-1.5"><Share2 className="w-4 h-4" /> Assistant booking</span>
               </NavLink>
             )}
+            <NavLink to="/guide" className={navClass}>
+              <span className="inline-flex items-center gap-1.5"><BookOpen className="w-4 h-4" /> Guide</span>
+            </NavLink>
           </nav>
 
           <div className="ml-auto flex items-center gap-3 text-sm">
@@ -92,6 +96,7 @@ export default function App() {
           <Route path="/calendars" element={<CalendarsPage me={me} />} />
           <Route path="/schedule" element={<SchedulePage me={me} />} />
           <Route path="/schedule/:calendarId" element={<SchedulePage me={me} />} />
+          <Route path="/guide" element={<GuidePage />} />
           <Route
             path="/routing"
             element={me.role === 'owner' ? <RoutingPage me={me} /> : <Navigate to="/calendars" replace />}

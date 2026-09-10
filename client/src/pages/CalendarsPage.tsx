@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Loader2, Plus, Save, CalendarClock, Archive, ChevronDown, ChevronRight, Info } from 'lucide-react';
+import { Loader2, Plus, Save, CalendarClock, Archive, ChevronDown, ChevronRight, Info, BookOpen } from 'lucide-react';
 import { api, type CalendarRow, type Me } from '../api';
 import WeekEditor from '../components/WeekEditor';
 
@@ -107,8 +107,18 @@ export default function CalendarsPage({ me }: { me: Me }) {
       {loading ? (
         <div className="py-10 flex justify-center text-slate-400"><Loader2 className="w-5 h-5 animate-spin" /></div>
       ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 py-10 text-center text-sm text-slate-500">
-          No calendars yet.{me.role === 'owner' ? ' Create the first one above.' : ' Ask the account owner to set one up for you.'}
+        // An empty account is exactly when somebody needs the guide, so it is offered here rather
+        // than left to be discovered in the menu.
+        <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 py-10 px-6 text-center">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            No calendars yet.{me.role === 'owner' ? ' Create the first one above.' : ' Ask the account owner to set one up for you.'}
+          </p>
+          <Link
+            to="/guide"
+            className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
+          >
+            <BookOpen className="w-4 h-4" /> Read the four-step guide first
+          </Link>
         </div>
       ) : (
         <div className="space-y-3">

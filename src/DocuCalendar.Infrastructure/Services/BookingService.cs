@@ -37,13 +37,20 @@ public sealed class BookingService
     public static SchedulingRules RulesOf(StaffCalendar c) =>
         new(c.SlotMinutes, c.MaxMinutes, c.BufferMinutes, c.MinLeadMinutes, c.HorizonDays, c.WeeklyAvailabilityJson);
 
+    /// <summary>
+    /// Free times. <paramref name="maxResults"/> exists because two callers want different things
+    /// from this: an assistant on the phone needs a short menu, while the week view needs EVERY
+    /// slot or its per-day counts lie — with the default cap, a week's worth of slots ran out on
+    /// Tuesday and Wednesday was reported as fully booked when it was empty.
+    /// </summary>
     public async Task<IReadOnlyList<Slot>> GetSlotsAsync(
-        TenantRegistration tenant, StaffCalendar calendar, int days, int? minutes, CancellationToken ct)
+        TenantRegistration tenant, StaffCalendar calendar, int days, int? minutes, CancellationToken ct,
+        int maxResults = SlotEngine.DefaultMaxResults)
     {
         var zone = TenantService.ZoneOf(tenant);
         var now = DateTimeOffset.UtcNow;
         var busy = await LoadBusyAsync(calendar.Id, now.AddDays(-1), now.AddDays(calendar.HorizonDays + 1), ct);
-        return SlotEngine.GetSlots(RulesOf(calendar), zone, busy, now, days, minutes);
+        return SlotEngine.GetSlots(RulesOf(calendar), zone, busy, now, days, minutes, maxResults);
     }
 
     /// <summary>

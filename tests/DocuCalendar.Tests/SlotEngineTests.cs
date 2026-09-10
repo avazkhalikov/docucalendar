@@ -212,6 +212,23 @@ public class SlotEngineTests
     }
 
     [Fact]
+    public void TheResultCapStopsAtWholeDays_NotInTheMiddleOfTheWeek()
+    {
+        // The cap is a menu length for a phone call, and it silently truncated the week view: a
+        // week's slots ran out on Tuesday and Wednesday was reported as fully booked while empty.
+        // Asking for everything must return everything.
+        var capped = SlotEngine.GetSlots(Rules(), Tashkent, Array.Empty<Interval>(), EarlyThursday, days: 7);
+        var all = SlotEngine.GetSlots(Rules(), Tashkent, Array.Empty<Interval>(), EarlyThursday, days: 7, maxResults: int.MaxValue);
+
+        Assert.Equal(SlotEngine.DefaultMaxResults, capped.Count);
+        Assert.True(all.Count > capped.Count, "a full working week has more slots than the default cap");
+
+        // Every working day in the range must be represented, the last one included.
+        var days = all.Select(s => TimeZoneInfo.ConvertTime(s.StartsAtUtc, Tashkent).Date).Distinct().ToList();
+        Assert.Contains(new DateTime(2026, 9, 16), days); // the Wednesday that read as "0 free"
+    }
+
+    [Fact]
     public void EverySlotLeavesTheEngineInUtc()
     {
         // Not pedantry: these instants are round-tripped through JSON and handed back as query

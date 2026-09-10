@@ -55,7 +55,9 @@ public sealed class ScheduleController : StaffControllerBase
             .OrderBy(a => a.StartsAt)
             .ToListAsync(ct);
 
-        var slots = await _booking.GetSlotsAsync(tenant, calendar, days, null, ct);
+        // Uncapped: this drives the "N free" count on every day of the week, and a cap makes the
+        // last days of the range read as fully booked when nothing is booked at all.
+        var slots = await _booking.GetSlotsAsync(tenant, calendar, days, null, ct, maxResults: int.MaxValue);
 
         return Ok(new
         {
