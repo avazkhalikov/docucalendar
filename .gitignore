@@ -1,0 +1,27 @@
+# Secrets NEVER enter this repository. The live values live only in
+# /var/www/docucalendar/api/appsettings.Production.json on the server, which the deploy
+# deliberately excludes from rsync so it is never overwritten and never uploaded.
+appsettings.Production.json
+appsettings.Local.json
+*.pem
+*.key
+.env
+.env.*
+
+# .NET
+bin/
+obj/
+publish/
+*.user
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Editors / OS
+.vs/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp

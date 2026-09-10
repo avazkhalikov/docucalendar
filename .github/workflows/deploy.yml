@@ -1,0 +1,132 @@
+name: Deploy DocuCalendar
+
+# The API and the SPA ship together: they are versioned together, and deploying them separately
+# would let a page expecting a new endpoint reach a backend that has not got it yet.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  APP: docucalendar
+  DOMAIN: calendar.docurest.com
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      # The slot engine decides what callers are offered. A red test never reaches the server.
+      - name: Test
+        run: dotnet test tests/DocuCalendar.Tests/DocuCalendar.Tests.csproj -c Release
+
+      - name: Build API
+        run: dotnet publish src/DocuCalendar.WebApi/DocuCalendar.WebApi.csproj -c Release -o publish/api
+
+      - name: Build client
+        working-directory: client
+        run: |
+          npm ci
+          npm run build
+
+      - name: Load SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.HETZNER_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.HETZNER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Decide target slot
+        id: slot
+        run: |
+          ACTIVE=$(ssh -i ~/.ssh/deploy_key ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }} \
+            "cat /var/www/${{ env.APP }}/.active-env 2>/dev/null || echo blue")
+          if [ "$ACTIVE" = "blue" ]; then
+            echo "target=green" >> $GITHUB_OUTPUT
+            echo "port=5015" >> $GITHUB_OUTPUT
+          else
+            echo "target=blue" >> $GITHUB_OUTPUT
+            echo "port=5014" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload API and client
+        run: |
+          # appsettings.Production.json holds the live secrets and lives ONLY on the server.
+          rsync -az --delete --exclude 'appsettings.Production.json' \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            publish/api/ \
+            ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }}:/var/www/${{ env.APP }}/api-${{ steps.slot.outputs.target }}/
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            client/dist/ \
+            ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }}:/var/www/${{ env.APP }}/client-${{ steps.slot.outputs.target }}/
+
+      - name: Start the new slot and verify it answers
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }} bash -s <<'REMOTE'
+          set -e
+          APP=docucalendar
+          TARGET=${{ steps.slot.outputs.target }}
+          PORT=${{ steps.slot.outputs.port }}
+
+          chown -R $APP:$APP /var/www/$APP/api-$TARGET /var/www/$APP/client-$TARGET
+          systemctl restart $APP-api-$TARGET
+
+          # Prove it is healthy BEFORE any traffic is switched to it. Migrations run at startup,
+          # so this also proves the schema applied.
+          for i in $(seq 1 20); do
+            sleep 3
+            if curl -sf "http://localhost:$PORT/api/health" > /dev/null; then
+              echo "slot $TARGET healthy on $PORT"
+              exit 0
+            fi
+          done
+          echo "slot $TARGET did not become healthy — traffic NOT switched"
+          journalctl -u $APP-api-$TARGET -n 40 --no-pager
+          exit 1
+          REMOTE
+
+      - name: Switch traffic
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.HETZNER_USER }}@${{ secrets.HETZNER_HOST }} bash -s <<'REMOTE'
+          set -e
+          APP=docucalendar
+          TARGET=${{ steps.slot.outputs.target }}
+          PORT=${{ steps.slot.outputs.port }}
+
+          cat > /etc/nginx/conf.d/$APP-upstream.conf <<EOF
+          # $APP backend upstream — managed by CI
+          # Active: ${TARGET^^} (port $PORT)
+          upstream ${APP}_backend {
+              server localhost:$PORT;
+          }
+          EOF
+
+          # A broken upstream would 502 the site, so never reload without passing the test first.
+          nginx -t
+          nginx -s reload
+
+          ln -sfn /var/www/$APP/api-$TARGET /var/www/$APP/api
+          ln -sfn /var/www/$APP/client-$TARGET /var/www/$APP/client
+          echo "$TARGET" > /var/www/$APP/.active-env
+          echo "traffic now on $TARGET"
+          REMOTE
+
+      - name: Verify the live site
+        run: |
+          sleep 3
+          curl -sf https://${{ env.DOMAIN }}/api/health | tee /dev/stderr | grep -q '"status":"ok"'
+          echo "deploy verified"
