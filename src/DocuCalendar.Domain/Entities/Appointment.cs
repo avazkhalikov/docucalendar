@@ -37,5 +37,14 @@ public class Appointment
     public string? CancelledByName { get; set; }
     public DateTimeOffset? CancelledAt { get; set; }
 
+    /// <summary>
+    /// The copy of this appointment in the person's Outlook or Google calendar, once the sync has
+    /// pushed it. Null until then, and cleared again when the remote copy is deleted — so "has a
+    /// remote id" is exactly "exists over there".
+    /// </summary>
+    public string? ExternalProvider { get; set; }
+    public string? ExternalEventId { get; set; }
+    public DateTimeOffset? ExternalSyncedAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

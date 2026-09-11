@@ -6,6 +6,10 @@ import { addDays, todayInZone, zonedToUtcIso } from '../time';
 
 const DAY_COUNT = 7;
 
+function sourceName(source: string): string {
+  return source === 'microsoft' ? 'Outlook 365' : source === 'google' ? 'Google Calendar' : source;
+}
+
 export default function SchedulePage({ me }: { me: Me }) {
   const { calendarId } = useParams<{ calendarId: string }>();
   const navigate = useNavigate();
@@ -165,8 +169,15 @@ export default function SchedulePage({ me }: { me: Me }) {
                           <div className="text-[12px] text-slate-600 dark:text-slate-300 tabular-nums">
                             {timeInZone(b.startsAtUtc, week!.timeZone)}–{timeInZone(b.endsAtUtc, week!.timeZone)}
                           </div>
-                          {b.reason && <div className="text-[11px] text-slate-400 truncate">{b.reason}</div>}
-                          {b.source !== 'manual' && <div className="text-[10px] text-slate-400">from {b.source}</div>}
+                          {b.source === 'manual' ? (
+                            b.reason && <div className="text-[11px] text-slate-400 truncate">{b.reason}</div>
+                          ) : (
+                            // Mirrored from the person's own calendar. The title is theirs to see;
+                            // everyone else is shown "Busy" — the server already decided which.
+                            <div className="text-[11px] text-slate-400 truncate">
+                              {b.reason ?? 'Busy'} <span className="text-[10px]">· {sourceName(b.source)}</span>
+                            </div>
+                          )}
                         </div>
                         {canEdit && b.source === 'manual' && (
                           <button

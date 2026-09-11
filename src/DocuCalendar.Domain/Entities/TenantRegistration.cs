@@ -20,6 +20,13 @@ public class TenantRegistration
     public string ApiKeyHash { get; set; } = string.Empty;
 
     /// <summary>
+    /// The same key, protected, kept for one purpose: signing the webhooks the background sync
+    /// sends when Outlook or Google changes an appointment. Those runs have no request to take
+    /// the key from, so it is captured — protected — the first time Docurest presents it.
+    /// </summary>
+    public string? ApiKeyProtected { get; set; }
+
+    /// <summary>
     /// The account's clock, copied from Docurest at provisioning (IANA, e.g. "Asia/Tashkent").
     /// Every hour a human sees or says — availability windows, offered slots, the appointment the
     /// AI reads back to a caller — is rendered in this zone. The database stores UTC only.

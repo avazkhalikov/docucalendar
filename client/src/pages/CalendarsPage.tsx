@@ -1,24 +1,74 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Loader2, Plus, Save, CalendarClock, Archive, ChevronDown, ChevronRight, Info, BookOpen } from 'lucide-react';
-import { api, type CalendarRow, type Me, type Person } from '../api';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  Loader2, Plus, Save, CalendarClock, Archive, ChevronDown, ChevronRight, Info, BookOpen,
+  RefreshCw, Unlink, AlertTriangle, CheckCircle2, Link2,
+} from 'lucide-react';
+import {
+  api, connectUrl, type CalendarRow, type Me, type Person, type SyncConnection, type SyncProvider, type SyncProviderKey,
+} from '../api';
 import WeekEditor from '../components/WeekEditor';
+
+/** What the provider round trip can come back with, in words a person can act on. */
+const CONNECT_ERRORS: Record<string, string> = {
+  denied: 'The sign-in was cancelled, so nothing was connected.',
+  expired: 'That connection attempt took too long — press Connect again.',
+  norefresh: 'The provider did not grant lasting access. Press Connect again and approve everything it asks for.',
+  exchange: 'The provider would not complete the connection. Try again in a moment; if it keeps failing, tell the administrator.',
+  missing: 'That calendar no longer exists.',
+  provider: 'Unknown calendar provider.',
+};
+
+const PROVIDER_NAMES: Record<SyncProviderKey, string> = { microsoft: 'Outlook 365', google: 'Google Calendar' };
 
 export default function CalendarsPage({ me }: { me: Me }) {
   const [rows, setRows] = useState<CalendarRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [newLabel, setNewLabel] = useState('');
   const [newOwnerId, setNewOwnerId] = useState('');
   const [creating, setCreating] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
+  const [providers, setProviders] = useState<SyncProvider[]>([]);
+  const [connections, setConnections] = useState<SyncConnection[]>([]);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const loadSync = useCallback(async () => {
+    try {
+      setConnections((await api.syncConnections()).connections);
+    } catch {
+      /* the sync line simply stays quiet */
+    }
+  }, []);
 
   useEffect(() => {
     // A missing list is not an error — it just means Docurest has not pushed the team yet, and the
     // picker falls back to "Mine", which is what a single-handed account wants anyway.
     api.people().then((r) => setPeople(r.people)).catch(() => setPeople([]));
-  }, []);
+    api.syncProviders().then((r) => setProviders(r.providers)).catch(() => setProviders([]));
+    void loadSync();
+  }, [loadSync]);
+
+  // Back from Microsoft or Google: say what happened, then clean the address bar so a refresh
+  // does not say it again.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const connected = params.get('connected');
+    const connectError = params.get('connectError');
+    if (!connected && !connectError) return;
+
+    if (connected) {
+      setNotice(`${PROVIDER_NAMES[connected as SyncProviderKey] ?? connected} connected — the first sync is running now.`);
+      // The first sync takes a few seconds; look again so the line shows its result.
+      setTimeout(() => void loadSync(), 4000);
+    } else if (connectError) {
+      setError(CONNECT_ERRORS[connectError] ?? 'The calendar could not be connected.');
+    }
+    navigate('/calendars', { replace: true });
+  }, [location.search, navigate, loadSync]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,6 +117,11 @@ export default function CalendarsPage({ me }: { me: Me }) {
       {error && (
         <div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-300">
           {error}
+        </div>
+      )}
+      {notice && (
+        <div className="rounded-lg border border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 shrink-0" /> {notice}
         </div>
       )}
 
@@ -146,6 +201,9 @@ export default function CalendarsPage({ me }: { me: Me }) {
               onError={setError}
               isOwner={me.role === 'owner'}
               ownerName={people.find((p) => p.userId === row.ownerUserId)?.name}
+              providers={providers}
+              connection={connections.find((c) => c.calendarId === row.id)}
+              onSyncChanged={loadSync}
             />
           ))}
         </div>
@@ -162,6 +220,9 @@ function CalendarCard({
   onError,
   isOwner,
   ownerName,
+  providers,
+  connection,
+  onSyncChanged,
 }: {
   row: CalendarRow;
   expanded: boolean;
@@ -170,6 +231,9 @@ function CalendarCard({
   onError: (message: string) => void;
   isOwner: boolean;
   ownerName?: string;
+  providers: SyncProvider[];
+  connection?: SyncConnection;
+  onSyncChanged: () => Promise<void>;
 }) {
   const [draft, setDraft] = useState(row);
   const [saving, setSaving] = useState(false);
@@ -216,7 +280,7 @@ function CalendarCard({
 
   return (
     <div className={`rounded-xl border bg-white dark:bg-[#101016] ${row.active ? 'border-slate-200 dark:border-slate-800' : 'border-slate-200/60 dark:border-slate-800/60 opacity-70'}`}>
-      <div className="flex items-center gap-3 px-4 py-3 flex-wrap">
+      <div className="flex items-center gap-3 px-4 pt-3 pb-2 flex-wrap">
         <button type="button" onClick={onToggle} className="text-slate-400 hover:text-blue-500">
           {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </button>
@@ -245,6 +309,21 @@ function CalendarCard({
           )}
         </div>
       </div>
+
+      {/* The link to the person's real calendar — always visible, because a calendar that is
+          not linked is the one thing on this page most worth noticing. */}
+      {row.active && (
+        <div className="px-4 pb-3 pl-11">
+          <SyncLine
+            row={row}
+            providers={providers}
+            connection={connection}
+            ownerName={ownerName}
+            onChanged={onSyncChanged}
+            onError={onError}
+          />
+        </div>
+      )}
 
       {expanded && (
         <div className="border-t border-slate-100 dark:border-slate-800 px-4 py-4 space-y-4">
@@ -334,6 +413,176 @@ function CalendarCard({
       )}
     </div>
   );
+}
+
+/**
+ * One line per calendar about its link to the person's real calendar. Three states: not linked
+ * (offer the providers — to the calendar's own person only, because the account that signs in
+ * would be theirs), linked and healthy, linked and needing attention.
+ */
+function SyncLine({
+  row, providers, connection, ownerName, onChanged, onError,
+}: {
+  row: CalendarRow;
+  providers: SyncProvider[];
+  connection?: SyncConnection;
+  ownerName?: string;
+  onChanged: () => Promise<void>;
+  onError: (message: string) => void;
+}) {
+  const [working, setWorking] = useState<'sync' | 'disconnect' | null>(null);
+  const [result, setResult] = useState<string | null>(null);
+
+  if (!connection) {
+    if (!row.mine) {
+      return (
+        <p className="text-[11px] text-slate-400 inline-flex items-center gap-1">
+          <Link2 className="w-3 h-3" /> Not linked to Outlook or Google — {ownerName ?? 'its owner'} can connect their own from their login.
+        </p>
+      );
+    }
+    if (providers.length === 0) return null;
+    return (
+      <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-400">
+        <span className="inline-flex items-center gap-1"><Link2 className="w-3 h-3" /> Link your real calendar:</span>
+        {providers.map((p) =>
+          p.configured ? (
+            <a
+              key={p.key}
+              href={connectUrl(p.key, row.id)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-700 text-[12px] font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <ProviderMark provider={p.key} /> Connect {p.displayName}
+            </a>
+          ) : (
+            <span
+              key={p.key}
+              title="Not set up on this server yet — ask the administrator"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-dashed border-slate-300 dark:border-slate-700 text-[12px] text-slate-400 cursor-not-allowed"
+            >
+              <ProviderMark provider={p.key} muted /> {p.displayName} — not set up
+            </span>
+          ),
+        )}
+      </div>
+    );
+  }
+
+  const { status } = connection;
+  const tone =
+    status === 'connected'
+      ? 'text-emerald-600 dark:text-emerald-400'
+      : status === 'reconnect'
+        ? 'text-amber-600 dark:text-amber-400'
+        : 'text-red-600 dark:text-red-400';
+  const StatusIcon = status === 'connected' ? CheckCircle2 : AlertTriangle;
+
+  const syncNow = async () => {
+    setWorking('sync');
+    setResult(null);
+    try {
+      const r = await api.syncNow(row.id);
+      setResult(
+        r.ok
+          ? `Synced — ${r.pulled} busy mirrored, ${r.pushed} pushed${r.moved ? `, ${r.moved} moved` : ''}${r.cancelled ? `, ${r.cancelled} cancelled` : ''}.`
+          : r.error ?? 'Sync failed.',
+      );
+      await onChanged();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Could not sync.');
+    } finally {
+      setWorking(null);
+    }
+  };
+
+  const disconnect = async () => {
+    if (!window.confirm(`Disconnect ${connection.displayName}? Mirrored busy time disappears from here; the events already in ${connection.displayName} stay.`)) return;
+    setWorking('disconnect');
+    try {
+      await api.disconnectSync(row.id);
+      await onChanged();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Could not disconnect.');
+    } finally {
+      setWorking(null);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-[11px]">
+      <span className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+        <ProviderMark provider={connection.provider} /> {connection.displayName}
+        <span className="text-slate-400">·</span>
+        <span className="text-slate-500 dark:text-slate-400">{connection.accountEmail}</span>
+      </span>
+      <span className={`inline-flex items-center gap-1 ${tone}`}>
+        <StatusIcon className="w-3 h-3" />
+        {status === 'connected' ? `synced ${ago(connection.lastSyncAt)}` : status === 'reconnect' ? 'needs reconnecting' : 'last sync failed'}
+      </span>
+      {status === 'connected' && (
+        <span className="text-slate-400 tabular-nums">{connection.lastPulled} busy mirrored · {connection.lastPushed} pushed</span>
+      )}
+      {status !== 'connected' && connection.lastSyncError && (
+        <span className="text-slate-400 truncate max-w-[26rem]" title={connection.lastSyncError}>{connection.lastSyncError}</span>
+      )}
+      {result && <span className="text-slate-500 dark:text-slate-400">{result}</span>}
+      {row.canEdit && (
+        <span className="inline-flex items-center gap-3 ml-auto">
+          {status === 'reconnect' && row.mine && (
+            <a
+              href={connectUrl(connection.provider, row.id)}
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-medium"
+            >
+              Reconnect
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={syncNow}
+            disabled={working !== null || status === 'reconnect'}
+            className="inline-flex items-center gap-1 text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50 disabled:no-underline"
+          >
+            {working === 'sync' ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} Sync now
+          </button>
+          <button
+            type="button"
+            onClick={disconnect}
+            disabled={working !== null}
+            className="inline-flex items-center gap-1 text-slate-400 hover:text-red-500 disabled:opacity-50"
+          >
+            {working === 'disconnect' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Unlink className="w-3 h-3" />} Disconnect
+          </button>
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ProviderMark({ provider, muted }: { provider: SyncProviderKey; muted?: boolean }) {
+  const isMicrosoft = provider === 'microsoft';
+  return (
+    <span
+      className={`inline-grid place-items-center w-4 h-4 rounded text-[9px] font-bold leading-none ${
+        muted
+          ? 'bg-slate-200 dark:bg-slate-800 text-slate-400'
+          : isMicrosoft
+            ? 'bg-[#0f6cbd] text-white'
+            : 'bg-[#1a73e8] text-white'
+      }`}
+      aria-hidden
+    >
+      {isMicrosoft ? 'O' : 'G'}
+    </span>
+  );
+}
+
+function ago(iso: string | null): string {
+  if (!iso) return 'never';
+  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ago`;
+  return `${Math.floor(seconds / 86400)} d ago`;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

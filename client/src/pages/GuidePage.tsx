@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import {
-  CalendarDays, Clock, Share2, Ban, Phone, ArrowRight, Check, Info, Users, CalendarClock,
+  CalendarDays, Clock, Share2, Ban, Phone, ArrowRight, Check, Info, Users, CalendarClock, RefreshCw,
 } from 'lucide-react';
 
 /**
@@ -26,7 +26,7 @@ export default function GuidePage() {
           Tell it when you are free, and it takes appointments for you — on the phone, in your own
           language, without ever offering a time you cannot keep.
         </p>
-        <p className="mt-4 text-[13px] text-slate-400">Four steps. About three minutes.</p>
+        <p className="mt-4 text-[13px] text-slate-400">Four steps, one optional. About three minutes.</p>
       </header>
 
       <ol className="space-y-4">
@@ -44,8 +44,8 @@ export default function GuidePage() {
             the right diary.
           </p>
           <p className="mt-2 text-slate-500 dark:text-slate-400">
-            Only the account owner creates them. Leave the user id blank to keep a calendar yours; paste
-            an operator’s id from Docurest to hand them their own.
+            Only the account owner creates them. Pick whose calendar it is from the list — your team
+            appears there by itself once this site has been opened from Docurest.
           </p>
         </Step>
 
@@ -100,6 +100,26 @@ export default function GuidePage() {
           <p className="mt-2 text-slate-500 dark:text-slate-400">
             You can also book someone in by hand — the same rules apply, so you cannot double-book
             yourself by accident.
+          </p>
+        </Step>
+
+        <Step
+          n={5}
+          icon={RefreshCw}
+          title="Link your Outlook or Google calendar"
+          where="Calendars → your calendar"
+          action={{ to: '/calendars', label: 'Open Calendars' }}
+        >
+          <p>
+            Optional, and worth it. Press <strong className="font-medium text-slate-800 dark:text-slate-200">Connect
+            Outlook 365</strong> or <strong className="font-medium text-slate-800 dark:text-slate-200">Connect Google
+            Calendar</strong> on your own calendar and sign in once. From then on, whatever is busy there is busy
+            here — the assistant never offers a time you already gave away — and every appointment it books
+            lands in your real calendar within seconds, with the visitor’s name and number.
+          </p>
+          <p className="mt-2 text-slate-500 dark:text-slate-400">
+            Move or delete one of those appointments in Outlook or Google and DocuCalendar follows, and the
+            team is told. Your event titles stay yours: colleagues see only “Busy”.
           </p>
         </Step>
       </ol>

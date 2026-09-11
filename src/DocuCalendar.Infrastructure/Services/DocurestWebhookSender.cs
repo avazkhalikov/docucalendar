@@ -29,7 +29,17 @@ public sealed class DocurestWebhookSender
         _http.Timeout = TimeSpan.FromSeconds(15);
     }
 
-    public async Task SendBookedAsync(TenantRegistration tenant, StaffCalendar calendar, Appointment appointment, string apiKeyForSigning, string eventName = "booked")
+    public Task SendBookedAsync(TenantRegistration tenant, StaffCalendar calendar, Appointment appointment, string apiKeyForSigning) =>
+        SendAppointmentEventAsync(tenant, calendar, appointment, apiKeyForSigning, "booked");
+
+    /// <summary>
+    /// "booked", "moved" or "cancelled". The last two come from the sync when the person changed
+    /// the appointment inside Outlook or Google — <paramref name="via"/> names where, and
+    /// <paramref name="previousStartUtc"/> says what a moved appointment used to be.
+    /// </summary>
+    public async Task SendAppointmentEventAsync(
+        TenantRegistration tenant, StaffCalendar calendar, Appointment appointment, string apiKeyForSigning,
+        string eventName, DateTimeOffset? previousStartUtc = null, string? via = null)
     {
         var url = _config["Docurest:WebhookUrl"];
         if (string.IsNullOrWhiteSpace(url))
@@ -45,6 +55,8 @@ public sealed class DocurestWebhookSender
             tenantId = tenant.TenantId,
             calendarId = calendar.Id,
             calendarLabel = calendar.Label,
+            previousLocal = previousStartUtc is { } prev ? Application.Scheduling.SlotEngine.FormatLocal(prev, zone) : null,
+            via,
             appointment = new
             {
                 id = appointment.Id,

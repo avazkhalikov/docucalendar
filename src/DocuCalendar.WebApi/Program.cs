@@ -1,9 +1,23 @@
 using DocuCalendar.Infrastructure;
 using DocuCalendar.Infrastructure.Data;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Data Protection guards the refresh tokens of every connected Outlook and Google calendar.
+// Two settings make those survive a deploy. The key ring lives in the service user's home —
+// outside the blue/green folders, so rsync never touches it. And the application name is pinned:
+// left to its default, ASP.NET derives it from the content-root PATH, and api-blue and api-green
+// are different paths — a token protected on one slot would be unreadable on the other after
+// the very next deploy, and every connection would die each time the site was updated.
+var keyRingPath = builder.Configuration["DataProtection:KeyRingPath"];
+if (string.IsNullOrWhiteSpace(keyRingPath))
+    keyRingPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aspnet", "DataProtection-Keys");
+builder.Services.AddDataProtection()
+    .SetApplicationName("docucalendar")
+    .PersistKeysToFileSystem(new DirectoryInfo(keyRingPath));
 
 // Refuse to boot rather than run with secrets that cannot protect anything. A calendar service
 // that starts happily with an empty SSO secret would accept forged identities from anyone.
@@ -66,6 +80,7 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<CalendarDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    logger.LogInformation("[Startup] Data Protection key ring: {Path}", keyRingPath);
     try
     {
         var pending = (await db.Database.GetPendingMigrationsAsync()).ToList();

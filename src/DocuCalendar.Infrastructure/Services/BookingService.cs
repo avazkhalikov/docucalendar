@@ -26,11 +26,13 @@ public sealed record BookOutcome(
 public sealed class BookingService
 {
     private readonly CalendarDbContext _db;
+    private readonly Sync.SyncScheduler _scheduler;
     private readonly ILogger<BookingService> _logger;
 
-    public BookingService(CalendarDbContext db, ILogger<BookingService> logger)
+    public BookingService(CalendarDbContext db, Sync.SyncScheduler scheduler, ILogger<BookingService> logger)
     {
         _db = db;
+        _scheduler = scheduler;
         _logger = logger;
     }
 
@@ -118,6 +120,9 @@ public sealed class BookingService
             _db.Appointments.Add(appointment);
             await _db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
+
+            // After the commit, never before: the sync must see the row it is about to push.
+            _scheduler.Nudge(calendar.Id);
 
             _logger.LogInformation(
                 "[Booking] {Tenant}/{Calendar}: {Visitor} booked {Start:u} for {Minutes} min via {Channel}.",

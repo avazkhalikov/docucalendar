@@ -100,6 +100,42 @@ export interface Person {
   role: 'owner' | 'operator';
 }
 
+export type SyncProviderKey = 'microsoft' | 'google';
+
+export interface SyncProvider {
+  key: SyncProviderKey;
+  displayName: string;
+  /** False when this server has no credentials for the provider — shown, but not offered. */
+  configured: boolean;
+}
+
+export interface SyncConnection {
+  calendarId: string;
+  provider: SyncProviderKey;
+  displayName: string;
+  accountEmail: string;
+  status: 'connected' | 'reconnect' | 'error';
+  lastSyncAt: string | null;
+  lastSyncError: string | null;
+  lastPulled: number;
+  lastPushed: number;
+}
+
+export interface SyncRunResult {
+  ok: boolean;
+  error: string | null;
+  pulled: number;
+  pushed: number;
+  moved: number;
+  cancelled: number;
+  status: string;
+}
+
+/** A full-page navigation, not a fetch: the provider's sign-in has to own the browser. */
+export function connectUrl(provider: SyncProviderKey, calendarId: string): string {
+  return `/api/sync/${provider}/connect?calendarId=${encodeURIComponent(calendarId)}`;
+}
+
 export const api = {
   me: () => call<Me>('/session/me'),
   /** The account's team, pushed here by Docurest — so a calendar is assigned by picking a name. */
@@ -130,6 +166,13 @@ export const api = {
   ) => call<{ id: string }>(`/schedule/${calendarId}/appointments`, { method: 'POST', body: JSON.stringify(body) }),
   cancelAppointment: (id: string) =>
     call<{ cancelled: boolean }>(`/schedule/appointments/${id}/cancel`, { method: 'POST' }),
+
+  syncProviders: () => call<{ providers: SyncProvider[] }>('/sync/providers'),
+  syncConnections: () => call<{ connections: SyncConnection[] }>('/sync/connections'),
+  syncNow: (calendarId: string) =>
+    call<SyncRunResult>(`/sync/connections/${calendarId}/sync-now`, { method: 'POST' }),
+  disconnectSync: (calendarId: string) =>
+    call<{ disconnected: boolean }>(`/sync/connections/${calendarId}/disconnect`, { method: 'POST' }),
 };
 
 /** The account's own clock — every hour a person reads here is rendered in it, never in the browser's. */

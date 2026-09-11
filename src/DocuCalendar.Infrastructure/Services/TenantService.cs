@@ -13,8 +13,13 @@ namespace DocuCalendar.Infrastructure.Services;
 public sealed class TenantService
 {
     private readonly CalendarDbContext _db;
+    private readonly Sync.TokenVault _vault;
 
-    public TenantService(CalendarDbContext db) => _db = db;
+    public TenantService(CalendarDbContext db, Sync.TokenVault vault)
+    {
+        _db = db;
+        _vault = vault;
+    }
 
     /// <summary>
     /// Creates or refreshes a tenant and returns a NEW api key in plaintext — the only moment it
@@ -34,6 +39,7 @@ public sealed class TenantService
         row.Name = string.IsNullOrWhiteSpace(name) ? tenantId : name.Trim();
         if (!string.IsNullOrWhiteSpace(timeZoneId)) row.TimeZoneId = timeZoneId.Trim();
         row.ApiKeyHash = Hash(apiKey);
+        row.ApiKeyProtected = _vault.Protect(apiKey);
         row.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         return apiKey;
@@ -45,7 +51,17 @@ public sealed class TenantService
     {
         if (string.IsNullOrWhiteSpace(apiKey)) return null;
         var hash = Hash(apiKey);
-        return await _db.Tenants.FirstOrDefaultAsync(t => t.ApiKeyHash == hash, ct);
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.ApiKeyHash == hash, ct);
+
+        // Accounts provisioned before the sync existed hold only the hash. The background sync
+        // needs the key itself to sign what it sends to Docurest, so it is captured — protected —
+        // the first time it is presented. One extra write, once per account.
+        if (tenant != null && string.IsNullOrEmpty(tenant.ApiKeyProtected))
+        {
+            tenant.ApiKeyProtected = _vault.Protect(apiKey);
+            await _db.SaveChangesAsync(ct);
+        }
+        return tenant;
     }
 
     /// <summary>The account's clock. Falls back to UTC rather than throwing: an unknown zone id

@@ -1,5 +1,8 @@
+using DocuCalendar.Application.Sync;
 using DocuCalendar.Infrastructure.Data;
+using DocuCalendar.Infrastructure.Options;
 using DocuCalendar.Infrastructure.Services;
+using DocuCalendar.Infrastructure.Services.Sync;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -24,6 +27,18 @@ public static class DependencyInjection
         // Outbound notifications to Docurest. A named client so its lifetime and DNS behaviour are
         // the platform's problem rather than a hand-rolled static HttpClient's.
         services.AddHttpClient<DocurestWebhookSender>();
+
+        // External calendar sync. Providers are singletons holding nothing but configuration; the
+        // sync service is scoped because it owns a DbContext for the length of one run.
+        services.Configure<SyncOptions>(config.GetSection(SyncOptions.SectionName));
+        services.AddHttpClient("sync", client => client.Timeout = TimeSpan.FromSeconds(30));
+        services.AddSingleton<TokenVault>();
+        services.AddSingleton<SyncStateProtector>();
+        services.AddSingleton<SyncScheduler>();
+        services.AddSingleton<ICalendarProvider, MicrosoftCalendarProvider>();
+        services.AddSingleton<ICalendarProvider, GoogleCalendarProvider>();
+        services.AddScoped<CalendarSyncService>();
+        services.AddHostedService<SyncWorker>();
 
         return services;
     }

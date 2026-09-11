@@ -2,6 +2,7 @@ using DocuCalendar.Application.Scheduling;
 using DocuCalendar.Domain.Entities;
 using DocuCalendar.Infrastructure.Data;
 using DocuCalendar.Infrastructure.Services;
+using DocuCalendar.Infrastructure.Services.Sync;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,14 +19,23 @@ public sealed class ScheduleController : StaffControllerBase
 {
     private readonly CalendarDbContext _db;
     private readonly BookingService _booking;
+    private readonly SyncScheduler _scheduler;
     private readonly ILogger<ScheduleController> _logger;
 
-    public ScheduleController(CalendarDbContext db, BookingService booking, ILogger<ScheduleController> logger)
+    public ScheduleController(CalendarDbContext db, BookingService booking, SyncScheduler scheduler, ILogger<ScheduleController> logger)
     {
         _db = db;
         _booking = booking;
+        _scheduler = scheduler;
         _logger = logger;
     }
+
+    private static string SourceName(string source) => source switch
+    {
+        "microsoft" => "Outlook 365",
+        "google" => "Google Calendar",
+        _ => source,
+    };
 
     /// <summary>One calendar's week: busy time, appointments, and the free slots that remain —
     /// the same slots the AI would offer, so what staff see is what a caller gets.</summary>
@@ -59,6 +69,11 @@ public sealed class ScheduleController : StaffControllerBase
         // last days of the range read as fully booked when nothing is booked at all.
         var slots = await _booking.GetSlotsAsync(tenant, calendar, days, null, ct, maxResults: int.MaxValue);
 
+        // What a mirrored block is called — "Dentist", "1:1 with the dean" — is the person's own
+        // business. Their calendar's owner sees it; everyone else, the account owner included,
+        // sees only that the time is taken. Reasons typed in here by hand were always for staff.
+        var seesMirroredTitles = calendar.OwnerUserId == UserId;
+
         return Ok(new
         {
             calendar = new { calendar.Id, calendar.Label, canEdit = CanManage(calendar), calendar.SlotMinutes, calendar.MaxMinutes },
@@ -69,7 +84,7 @@ public sealed class ScheduleController : StaffControllerBase
                 startsAtUtc = b.StartsAt,
                 endsAtUtc = b.EndsAt,
                 local = SlotEngine.FormatLocal(b.StartsAt, zone),
-                b.Reason,
+                reason = b.Source == "manual" || seesMirroredTitles ? b.Reason : null,
                 b.Source,
             }),
             appointments = appointments.Select(a => new
@@ -127,7 +142,7 @@ public sealed class ScheduleController : StaffControllerBase
         // Time mirrored from an external calendar is not ours to delete — it would reappear on the
         // next sync and the person would rightly wonder what they had done wrong.
         if (block.Source != "manual")
-            return BadRequest(new { message = $"This time comes from {block.Source} — change it there." });
+            return BadRequest(new { message = $"This time comes from {SourceName(block.Source)} — change it there." });
 
         _db.BusyBlocks.Remove(block);
         await _db.SaveChangesAsync(ct);
@@ -174,6 +189,8 @@ public sealed class ScheduleController : StaffControllerBase
         appointment.CancelledAt = DateTimeOffset.UtcNow;
         appointment.CancelledByName = DisplayName;
         await _db.SaveChangesAsync(ct);
+        // So the copy in the person's Outlook or Google calendar goes within seconds, not minutes.
+        _scheduler.Nudge(appointment.CalendarId);
         _logger.LogInformation("[Schedule] {Tenant}: {User} cancelled appointment {Id}.", TenantId, DisplayName, id);
         return Ok(new { cancelled = true });
     }

@@ -14,6 +14,7 @@ public class CalendarDbContext : DbContext
     public DbSet<Appointment> Appointments => Set<Appointment>();
     public DbSet<KnownContext> KnownContexts => Set<KnownContext>();
     public DbSet<KnownPerson> KnownPeople => Set<KnownPerson>();
+    public DbSet<ExternalConnection> ExternalConnections => Set<ExternalConnection>();
 
     /// <summary>
     /// Every table this service owns lives under one schema of its own.
@@ -91,11 +92,28 @@ public class CalendarDbContext : DbContext
             e.HasKey(x => x.Id);
             e.Property(x => x.Reason).HasMaxLength(300);
             e.Property(x => x.Source).HasMaxLength(30).IsRequired().HasDefaultValue("manual");
-            e.Property(x => x.ExternalId).HasMaxLength(200);
+            // Graph event ids run to a couple of hundred characters; Google's may reach a thousand.
+            e.Property(x => x.ExternalId).HasMaxLength(1024);
             e.HasIndex(x => new { x.CalendarId, x.StartsAt });
-            // The deferred Outlook sync matches remote events by this pair; indexed now so the
-            // sync task does not need a migration of its own to be fast.
+            // The sync matches remote events by this pair on every run.
             e.HasIndex(x => new { x.CalendarId, x.Source, x.ExternalId });
+        });
+
+        b.Entity<ExternalConnection>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.TenantId).HasMaxLength(100).IsRequired();
+            e.Property(x => x.Provider).HasMaxLength(20).IsRequired();
+            e.Property(x => x.AccountEmail).HasMaxLength(300).IsRequired();
+            e.Property(x => x.AccountName).HasMaxLength(200);
+            e.Property(x => x.Status).HasMaxLength(20).IsRequired().HasDefaultValue("connected");
+            e.Property(x => x.LastSyncError).HasMaxLength(500);
+            e.Property(x => x.LastPulled).HasDefaultValue(0);
+            e.Property(x => x.LastPushed).HasDefaultValue(0);
+            // One real calendar per staff calendar. Two would mean two sources of truth for the
+            // same day, and the sync would fight itself.
+            e.HasIndex(x => x.CalendarId).IsUnique();
+            e.HasIndex(x => new { x.TenantId, x.Status });
         });
 
         b.Entity<Appointment>(e =>
@@ -109,9 +127,12 @@ public class CalendarDbContext : DbContext
             e.Property(a => a.SourceRef).HasMaxLength(200);
             e.Property(a => a.Status).HasMaxLength(20).IsRequired().HasDefaultValue("confirmed");
             e.Property(a => a.CancelledByName).HasMaxLength(200);
+            e.Property(a => a.ExternalProvider).HasMaxLength(20);
+            e.Property(a => a.ExternalEventId).HasMaxLength(1024);
             e.HasIndex(a => new { a.CalendarId, a.StartsAt });
             e.HasIndex(a => new { a.TenantId, a.StartsAt });
             e.HasIndex(a => a.VisitorPhone);
+            e.HasIndex(a => new { a.CalendarId, a.ExternalEventId });
         });
     }
 }

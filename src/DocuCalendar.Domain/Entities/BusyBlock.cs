@@ -17,13 +17,12 @@ public class BusyBlock
     public string? Reason { get; set; }
 
     /// <summary>
-    /// "manual" for anything a person entered here. "outlook" is reserved for the deferred Microsoft
-    /// 365 sync: when it arrives, mirrored busy time lands in these same rows with this field set,
-    /// and the slot engine needs no change at all to respect it.
+    /// "manual" for anything a person entered here; "microsoft" or "google" for time mirrored from
+    /// the person's own calendar by the sync. The slot engine does not distinguish — busy is busy.
     /// </summary>
     public string Source { get; set; } = "manual";
 
-    /// <summary>Set by a future sync so a mirrored block can be matched to its remote event.</summary>
+    /// <summary>The remote event's id, so the sync can match a mirrored block to its source.</summary>
     public string? ExternalId { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
