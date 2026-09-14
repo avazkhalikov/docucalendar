@@ -166,6 +166,15 @@ export const embedded = (() => {
  */
 export function embeddingOrigin(): string | null {
   if (!embedded) return null;
+  // Served under /calendar/ on the same host as the page framing us, the parent's location is
+  // readable directly — the exact origin, no referrer policy in the way. The referrer remains
+  // as a fallback for the cross-origin case (calendar.docurest.com framed by www.docurest.com).
+  try {
+    const top = window.top?.location.origin;
+    if (top) return top;
+  } catch {
+    /* cross-origin parent: the referrer is all we get */
+  }
   try {
     return document.referrer ? new URL(document.referrer).origin : null;
   } catch {
