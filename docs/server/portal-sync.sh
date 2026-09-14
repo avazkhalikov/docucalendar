@@ -31,7 +31,7 @@ log() { echo "$(date -Is) $*" >> "$LOG"; }
 
 [ -z "$TOKEN" ] && { log "no PORTAL_JOB_TOKEN set — nothing to do"; exit 0; }
 
-hosts=$(curl -sf --max-time 20 -H "Authorization: Bearer $TOKEN" "$API") || {
+hosts=$(curl -sf --max-time 20 -H "X-Portal-Token: $TOKEN" "$API") || {
   log "could not read the host list from $API"; exit 0;
 }
 
