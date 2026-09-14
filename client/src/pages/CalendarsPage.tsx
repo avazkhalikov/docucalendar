@@ -8,13 +8,14 @@ import {
   api, connectUrl, embedded, type CalendarRow, type Me, type Person, type SyncConnection, type SyncProvider, type SyncProviderKey,
 } from '../api';
 
-/**
- * Google and Microsoft refuse to render their sign-in inside a frame, so from within Docurest
- * the connect links take over the whole tab; the callback brings it back to Docurest afterwards.
- */
-const connectTarget = embedded ? '_top' : undefined;
 import WeekEditor from '../components/WeekEditor';
 import { ProviderMark, ago, SYNC_INTERVALS } from '../components/SyncBits';
+
+/**
+ * Google and Microsoft refuse to render their sign-in inside a frame, so from within the
+ * dashboard the connect links take over the whole tab; the callback brings the browser back.
+ */
+const connectTarget = embedded ? '_top' : undefined;
 
 /** What the provider round trip can come back with, in words a person can act on. */
 const CONNECT_ERRORS: Record<string, string> = {
@@ -175,7 +176,7 @@ export default function CalendarsPage({ me }: { me: Me }) {
             <Info className="w-3.5 h-3.5 mt-px shrink-0" />
             {people.length > 1
               ? 'Whoever it belongs to can edit it and set their own hours; you can edit every calendar on the account.'
-              : 'Your team appears here automatically — open this site from Docurest once and the list arrives.'}
+              : 'Your team appears here automatically — open this site from your assistant dashboard once and the list arrives.'}
           </p>
         </div>
       )}

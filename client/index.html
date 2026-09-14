@@ -4,7 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DocuCalendar</title>
-    <meta name="description" content="Appointment calendars for Docurest accounts — the times your AI assistant may offer." />
+    <meta name="description" content="Appointment calendars — the times your AI assistant may offer." />
+    <!--
+      The portal brand, for white-label hosts. nginx may substitute the placeholder (the same
+      sub_filter mechanism the app shell uses); when it does not, the client sees the literal
+      token, treats it as unset, and asks the host's own API instead. See src/branding.ts.
+    -->
+    <script>window.__PORTAL_BRAND__ = "__PORTAL_BRAND__";</script>
   </head>
   <body>
     <div id="root"></div>

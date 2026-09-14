@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { CalendarDays, LogOut, Loader2, Users, CalendarClock, Share2, AlertTriangle, BookOpen, ExternalLink } from 'lucide-react';
 import { api, ApiError, embedded, type Me } from './api';
+import { applyTitle, brandingNow, resolveBranding, type Branding } from './branding';
 import CalendarsPage from './pages/CalendarsPage';
 import SchedulePage from './pages/SchedulePage';
 import RoutingPage from './pages/RoutingPage';
@@ -10,6 +11,21 @@ import GuidePage from './pages/GuidePage';
 export default function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [state, setState] = useState<'loading' | 'ready' | 'signed-out'>('loading');
+  // On a white-label portal this site belongs to the university, not to us: whatever the host
+  // says it is called is what the header and the tab title show.
+  const [branding, setBranding] = useState<Branding>(brandingNow);
+
+  useEffect(() => {
+    let cancelled = false;
+    void resolveBranding().then((b) => {
+      if (cancelled) return;
+      setBranding(b);
+      applyTitle(b.brand);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -33,7 +49,7 @@ export default function App() {
     );
   }
 
-  if (state === 'signed-out' || !me) return <SignedOut />;
+  if (state === 'signed-out' || !me) return <SignedOut branding={branding} />;
 
   const navClass = ({ isActive }: { isActive: boolean }) =>
     `px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
@@ -50,8 +66,12 @@ export default function App() {
         <div className={`max-w-6xl mx-auto px-4 flex items-center gap-3 flex-wrap ${embedded ? 'py-2' : 'py-3'}`}>
           {!embedded && (
             <div className="flex items-center gap-2 mr-2">
-              <CalendarDays className="w-5 h-5 text-blue-500" />
-              <span className="font-semibold">DocuCalendar</span>
+              {branding.logoUrl ? (
+                <img src={branding.logoUrl} alt="" className="w-5 h-5 rounded object-contain" />
+              ) : (
+                <CalendarDays className="w-5 h-5 text-blue-500" />
+              )}
+              <span className="font-semibold">{branding.brand}</span>
             </div>
           )}
 
@@ -74,7 +94,7 @@ export default function App() {
 
           {embedded ? (
             <a
-              href="/"
+              href="/calendar/"
               target="_blank"
               rel="noreferrer"
               className="ml-auto inline-flex items-center gap-1 text-[12px] text-slate-400 hover:text-blue-500"
@@ -128,13 +148,13 @@ export default function App() {
  * There is no login form here on purpose: this site trusts Docurest and nothing else. Telling
  * someone to go back and click the link is the whole of the recovery path.
  */
-function SignedOut() {
+function SignedOut({ branding }: { branding: Branding }) {
   const failed = new URLSearchParams(window.location.search).get('sso') === 'failed';
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
       <div className="max-w-md w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#101016] p-6 text-center">
         <CalendarDays className="w-8 h-8 text-blue-500 mx-auto" />
-        <h1 className="mt-3 text-lg font-semibold">DocuCalendar</h1>
+        <h1 className="mt-3 text-lg font-semibold">{branding.brand}</h1>
         {failed ? (
           <p className="mt-2 text-sm text-amber-600 dark:text-amber-400 flex items-center justify-center gap-1.5">
             <AlertTriangle className="w-4 h-4" /> That sign-in link had expired.
@@ -149,14 +169,15 @@ function SignedOut() {
         ) : (
           <>
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-              Open this from Docurest — <span className="font-medium">My Calendar</span> in the sidebar. There is no
-              separate password here; your Docurest account is the key.
+              Open this from <span className="font-medium">My Calendar</span> in the sidebar of your assistant. There is
+              no separate password here; your existing account is the key.
             </p>
+            {/* Host-relative: the app lives on whichever host served this page. */}
             <a
-              href="https://docurest.com/app/calendar"
+              href="/app/calendar"
               className="mt-4 inline-block px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
             >
-              Go to Docurest
+              Go to My Calendar
             </a>
           </>
         )}

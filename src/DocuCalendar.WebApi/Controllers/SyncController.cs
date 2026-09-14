@@ -137,18 +137,33 @@ public sealed class SyncController : StaffControllerBase
             });
 
         var nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(8));
-        var state = _state.Protect(new SyncState(TenantId, UserId, calendar.Id, p.Key, nonce, AllowedReturn(returnTo)));
+        var returnOrigin = await AllowedReturnAsync(returnTo, ct);
+        var state = _state.Protect(new SyncState(TenantId, UserId, calendar.Id, p.Key, nonce, returnOrigin));
         return Redirect(p.BuildAuthorizeUrl(state, RedirectUriFor(p.Key)));
     }
 
-    /// <summary>The embedding site's origin, but only if it is one of ours.</summary>
-    private string? AllowedReturn(string? returnTo)
+    /// <summary>
+    /// The embedding site's origin, but only if it is one of ours: a host Docurest has pushed for
+    /// this account, or one of the server's configured fallbacks. Anything else is dropped — a
+    /// redirect to an arbitrary site at the end of a sign-in is a phishing kit.
+    /// </summary>
+    private async Task<string?> AllowedReturnAsync(string? returnTo, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(returnTo)) return null;
-        var candidate = returnTo.Trim().TrimEnd('/');
-        return _options.EmbedHosts
-            .Select(h => h.Trim().TrimEnd('/'))
-            .FirstOrDefault(h => string.Equals(h, candidate, StringComparison.OrdinalIgnoreCase));
+        if (!Uri.TryCreate(returnTo.Trim(), UriKind.Absolute, out var origin)) return null;
+        if (origin.Scheme != Uri.UriSchemeHttps && origin.Scheme != Uri.UriSchemeHttp) return null;
+
+        var host = origin.Host.ToLowerInvariant();
+
+        // What Docurest says belongs to this account.
+        if (await _db.EmbedHosts.AsNoTracking().AnyAsync(h => h.TenantId == TenantId && h.Host == host, ct))
+            return $"{origin.Scheme}://{origin.Authority}";
+
+        // Server-wide fallback, so nothing regressed before Docurest first pushed.
+        var configured = _options.EmbedHosts
+            .Select(EmbedHostsController.Normalise)
+            .Any(h => string.Equals(h, host, StringComparison.OrdinalIgnoreCase));
+        return configured ? $"{origin.Scheme}://{origin.Authority}" : null;
     }
 
     /// <summary>
@@ -158,8 +173,11 @@ public sealed class SyncController : StaffControllerBase
     /// </summary>
     private static string Landing(SyncState? state, string localPath) =>
         state?.ReturnTo is { Length: > 0 } origin
+            // Back to the portal the person started from: its My Calendar page re-embeds this
+            // site, and `next` (a bare in-app path) tells the embedded copy where to open.
             ? $"{origin}/app/calendar?next={Uri.EscapeDataString(localPath)}"
-            : localPath;
+            // Started here, so the browser is on this host: the UI prefix applies.
+            : UiPaths.Ui(localPath);
 
     /// <summary>
     /// Step two: back from the provider. Anonymous by necessity — the browser may arrive without
@@ -176,12 +194,12 @@ public sealed class SyncController : StaffControllerBase
         CancellationToken ct)
     {
         var p = Find(provider);
-        if (p == null) return Redirect("/calendars?connectError=provider");
-        if (!string.IsNullOrEmpty(error)) return Redirect("/calendars?connectError=denied");
+        if (p == null) return Redirect(UiPaths.Ui("/calendars?connectError=provider"));
+        if (!string.IsNullOrEmpty(error)) return Redirect(UiPaths.Ui("/calendars?connectError=denied"));
 
         var s = _state.Unprotect(state);
         if (s == null || !string.Equals(s.Provider, p.Key, StringComparison.Ordinal))
-            return Redirect("/calendars?connectError=expired");
+            return Redirect(UiPaths.Ui("/calendars?connectError=expired"));
         if (string.IsNullOrEmpty(code)) return Redirect(Landing(s, "/calendars?connectError=denied"));
 
         var calendar = await _db.Calendars.AsNoTracking()

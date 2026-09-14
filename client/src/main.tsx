@@ -4,9 +4,10 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import './index.css';
 
+// Every route lives under /calendar/ on whichever host is serving us.
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename="/calendar">
       <App />
     </BrowserRouter>
   </React.StrictMode>,

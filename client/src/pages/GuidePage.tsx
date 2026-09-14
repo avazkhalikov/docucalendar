@@ -45,7 +45,7 @@ export default function GuidePage() {
           </p>
           <p className="mt-2 text-slate-500 dark:text-slate-400">
             Only the account owner creates them. Pick whose calendar it is from the list — your team
-            appears there by itself once this site has been opened from Docurest.
+            appears there by itself once this site has been opened from your assistant dashboard.
           </p>
         </Step>
 
@@ -82,7 +82,7 @@ export default function GuidePage() {
           </p>
           <p className="mt-2 text-slate-500 dark:text-slate-400">
             “Everywhere else” covers every phone line and chat. You can override it per knowledge base
-            once Docurest has sent the list.
+            once the assistant has sent the list.
           </p>
         </Step>
 
@@ -120,7 +120,7 @@ export default function GuidePage() {
             lands in your real calendar within seconds, with the visitor’s name and number.
           </p>
           <p className="mt-2 text-slate-500 dark:text-slate-400">
-            Move or delete one of those appointments in Outlook or Google and DocuCalendar follows, and the
+            Move or delete one of those appointments in Outlook or Google and this calendar follows, and the
             team is told. Your event titles stay yours: colleagues see only “Busy”.
           </p>
         </Step>
@@ -171,7 +171,7 @@ export default function GuidePage() {
           is double-booked.
         </Note>
         <Note title="You always hear about it">
-          Every booking arrives in your Telegram operator group and your Docurest notifications, with the
+          Every booking arrives in your Telegram operator group and your assistant notifications, with the
           visitor’s name and number.
         </Note>
         <Note title="Times are yours">

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Loader2, Share2, Info, CheckCircle2 } from 'lucide-react';
-import { api, type CalendarRow, type Me } from '../api';
+import { api, API_BASE, type CalendarRow, type Me } from '../api';
 
 interface KnownContext {
   tenantContextId: string;
@@ -24,7 +24,7 @@ export default function RoutingPage({ me }: { me: Me }) {
     try {
       const [list, ctxResponse] = await Promise.all([
         api.calendars(),
-        fetch('/api/contexts', { credentials: 'include' }).then((r) => (r.ok ? r.json() : { contexts: [] })),
+        fetch(`${API_BASE}/contexts`, { credentials: 'include' }).then((r) => (r.ok ? r.json() : { contexts: [] })),
       ]);
       setCalendars(list.calendars.filter((c) => c.active));
       const map: Record<string, string> = {};
@@ -127,8 +127,8 @@ export default function RoutingPage({ me }: { me: Me }) {
             {contexts.length === 0 ? (
               <p className="px-4 py-6 text-sm text-slate-500 dark:text-slate-400 flex items-start gap-2">
                 <Info className="w-4 h-4 mt-0.5 shrink-0" />
-                Docurest has not sent the list of knowledge bases yet. The account-wide choice above still applies to
-                everything; open Docurest once and it will push the list.
+                The list of knowledge bases has not arrived yet. The account-wide choice above still applies to
+                everything; open this site from your assistant dashboard once and the list is pushed here.
               </p>
             ) : (
               contexts.map((ctx) => (

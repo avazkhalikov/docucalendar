@@ -15,6 +15,7 @@ public class CalendarDbContext : DbContext
     public DbSet<KnownContext> KnownContexts => Set<KnownContext>();
     public DbSet<KnownPerson> KnownPeople => Set<KnownPerson>();
     public DbSet<ExternalConnection> ExternalConnections => Set<ExternalConnection>();
+    public DbSet<EmbedHost> EmbedHosts => Set<EmbedHost>();
 
     /// <summary>
     /// Every table this service owns lives under one schema of its own.
@@ -86,6 +87,13 @@ public class CalendarDbContext : DbContext
             e.Property(p => p.TenantId).HasMaxLength(100);
             e.Property(p => p.Name).HasMaxLength(200).IsRequired();
             e.Property(p => p.Role).HasMaxLength(20).IsRequired().HasDefaultValue("operator");
+        });
+
+        b.Entity<EmbedHost>(e =>
+        {
+            e.HasKey(h => new { h.TenantId, h.Host });
+            e.Property(h => h.TenantId).HasMaxLength(100);
+            e.Property(h => h.Host).HasMaxLength(253); // the longest a hostname may be
         });
 
         b.Entity<BusyBlock>(e =>

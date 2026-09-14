@@ -44,7 +44,7 @@ public sealed class SessionController : ControllerBase
         if (identity == null)
         {
             _logger.LogWarning("[SSO] Rejected a sign-in token.");
-            return Redirect("/?sso=failed");
+            return Redirect(UiPaths.Ui("/?sso=failed"));
         }
 
         // First arrival from an account nobody has provisioned yet: register it now so the person
@@ -81,11 +81,13 @@ public sealed class SessionController : ControllerBase
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
 
-        // A local path only: an open redirect on the sign-in door would be a phishing kit.
+        // A local path only: an open redirect on the sign-in door would be a phishing kit. The
+        // path is one of ours ("/calendars?connected=google"), so it is placed under the UI
+        // prefix on whichever host this request arrived at.
         var landing = next is { Length: > 1 and < 400 } && next.StartsWith('/') && !next.StartsWith("//") && !next.Contains('\\')
             ? next
             : "/";
-        return Redirect(landing);
+        return Redirect(UiPaths.Ui(landing));
     }
 
     [HttpGet("me")]

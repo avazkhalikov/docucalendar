@@ -74,8 +74,15 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Where this app's API lives, on whichever host is serving it: always under our own path prefix.
+ * That is what makes the session cookie work inside Docurest's frame on a white-label portal —
+ * the calendar and the page framing it are the same origin.
+ */
+export const API_BASE = '/calendar/api';
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${path}`, {
+  const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
@@ -137,7 +144,7 @@ export interface SyncRunResult {
 
 /** A full-page navigation, not a fetch: the provider's sign-in has to own the browser. */
 export function connectUrl(provider: SyncProviderKey, calendarId: string): string {
-  const base = `/api/sync/${provider}/connect?calendarId=${encodeURIComponent(calendarId)}`;
+  const base = `${API_BASE}/sync/${provider}/connect?calendarId=${encodeURIComponent(calendarId)}`;
   const origin = embeddingOrigin();
   return origin ? `${base}&returnTo=${encodeURIComponent(origin)}` : base;
 }
