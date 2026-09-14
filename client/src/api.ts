@@ -119,6 +119,8 @@ export interface SyncConnection {
   lastSyncError: string | null;
   lastPulled: number;
   lastPushed: number;
+  /** How often it syncs by itself, in minutes; 0 = only when somebody presses Sync now. */
+  syncEveryMinutes: number;
 }
 
 export interface SyncRunResult {
@@ -199,6 +201,8 @@ export const api = {
     call<SyncRunResult>(`/sync/connections/${calendarId}/sync-now`, { method: 'POST' }),
   disconnectSync: (calendarId: string) =>
     call<{ disconnected: boolean }>(`/sync/connections/${calendarId}/disconnect`, { method: 'POST' }),
+  setSyncInterval: (calendarId: string, syncEveryMinutes: number) =>
+    call<{ saved: boolean }>(`/sync/connections/${calendarId}`, { method: 'PUT', body: JSON.stringify({ syncEveryMinutes }) }),
 };
 
 /** The account's own clock — every hour a person reads here is rendered in it, never in the browser's. */

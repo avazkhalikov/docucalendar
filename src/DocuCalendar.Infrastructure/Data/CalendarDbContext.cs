@@ -110,6 +110,8 @@ public class CalendarDbContext : DbContext
             e.Property(x => x.LastSyncError).HasMaxLength(500);
             e.Property(x => x.LastPulled).HasDefaultValue(0);
             e.Property(x => x.LastPushed).HasDefaultValue(0);
+            // Declared: a backfilled 0 here would silently turn every existing connection manual-only.
+            e.Property(x => x.SyncEveryMinutes).HasDefaultValue(5);
             // One real calendar per staff calendar. Two would mean two sources of truth for the
             // same day, and the sync would fight itself.
             e.HasIndex(x => x.CalendarId).IsUnique();

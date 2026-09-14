@@ -79,9 +79,16 @@ public sealed class SyncWorker : BackgroundService
         }
     }
 
+    /// <summary>
+    /// The worker looks once a minute; each connection's own interval (5, 10, 15… minutes, or
+    /// manual-only) decides whether it runs. Options.IntervalMinutes is no longer the cadence —
+    /// it survives in config only so an old file does not fail to bind.
+    /// </summary>
+    private static readonly TimeSpan Tick = TimeSpan.FromMinutes(1);
+
     protected override async Task ExecuteAsync(CancellationToken stop)
     {
-        var interval = TimeSpan.FromMinutes(Math.Clamp(_options.IntervalMinutes, 1, 60));
+        var interval = Tick;
         // Migrations have run by now (they happen before the host starts); a short pause just lets
         // the first requests through before the worker takes the database for itself.
         try { await Task.Delay(TimeSpan.FromSeconds(15), stop); } catch (OperationCanceledException) { return; }
@@ -121,7 +128,7 @@ public sealed class SyncWorker : BackgroundService
         {
             using var scope = _scopes.CreateScope();
             var sync = scope.ServiceProvider.GetRequiredService<CalendarSyncService>();
-            calendarIds = await sync.ListSyncableCalendarsAsync(ct);
+            calendarIds = await sync.ListDueCalendarsAsync(DateTimeOffset.UtcNow, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

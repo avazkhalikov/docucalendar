@@ -14,6 +14,7 @@ import {
  */
 const connectTarget = embedded ? '_top' : undefined;
 import WeekEditor from '../components/WeekEditor';
+import { ProviderMark, ago, SYNC_INTERVALS } from '../components/SyncBits';
 
 /** What the provider round trip can come back with, in words a person can act on. */
 const CONNECT_ERRORS: Record<string, string> = {
@@ -535,6 +536,23 @@ function SyncLine({
       {result && <span className="text-slate-500 dark:text-slate-400">{result}</span>}
       {row.canEdit && (
         <span className="inline-flex items-center gap-3 ml-auto">
+          <select
+            value={connection.syncEveryMinutes}
+            onChange={async (e) => {
+              try {
+                await api.setSyncInterval(row.id, Number(e.target.value));
+                await onChanged();
+              } catch (err) {
+                onError(err instanceof Error ? err.message : 'Could not change the sync interval.');
+              }
+            }}
+            title="How often this calendar syncs by itself"
+            className="rounded-md bg-slate-50 dark:bg-[#0b0b0f] border border-slate-300 dark:border-slate-700 px-1.5 py-0.5 text-[11px]"
+          >
+            {SYNC_INTERVALS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
           {status === 'reconnect' && row.mine && (
             <a
               href={connectUrl(connection.provider, row.id)}
@@ -564,33 +582,6 @@ function SyncLine({
       )}
     </div>
   );
-}
-
-function ProviderMark({ provider, muted }: { provider: SyncProviderKey; muted?: boolean }) {
-  const isMicrosoft = provider === 'microsoft';
-  return (
-    <span
-      className={`inline-grid place-items-center w-4 h-4 rounded text-[9px] font-bold leading-none ${
-        muted
-          ? 'bg-slate-200 dark:bg-slate-800 text-slate-400'
-          : isMicrosoft
-            ? 'bg-[#0f6cbd] text-white'
-            : 'bg-[#1a73e8] text-white'
-      }`}
-      aria-hidden
-    >
-      {isMicrosoft ? 'O' : 'G'}
-    </span>
-  );
-}
-
-function ago(iso: string | null): string {
-  if (!iso) return 'never';
-  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (seconds < 60) return 'just now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ago`;
-  return `${Math.floor(seconds / 86400)} d ago`;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {

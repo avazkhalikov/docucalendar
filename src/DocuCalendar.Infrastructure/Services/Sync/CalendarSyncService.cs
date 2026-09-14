@@ -44,13 +44,18 @@ public sealed class CalendarSyncService
     public ICalendarProvider? ProviderFor(string key) =>
         _providers.FirstOrDefault(p => string.Equals(p.Key, key, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Calendars worth visiting on the timer: connected or in a passing error, never
-    /// those waiting for a person to reconnect.</summary>
-    public Task<List<Guid>> ListSyncableCalendarsAsync(CancellationToken ct) =>
-        _db.ExternalConnections.AsNoTracking()
-            .Where(c => c.Status != "reconnect")
-            .Select(c => c.CalendarId)
+    /// <summary>Calendars whose own interval says it is time: connected or in a passing error,
+    /// never manual-only, never those waiting for a person to reconnect.</summary>
+    public async Task<List<Guid>> ListDueCalendarsAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        var rows = await _db.ExternalConnections.AsNoTracking()
+            .Select(c => new { c.CalendarId, c.Status, c.SyncEveryMinutes, c.LastSyncAt })
             .ToListAsync(ct);
+        return rows
+            .Where(r => SyncSchedule.IsDue(r.Status, r.SyncEveryMinutes, r.LastSyncAt, now))
+            .Select(r => r.CalendarId)
+            .ToList();
+    }
 
     /// <summary>
     /// Runs one sync, under two locks. The in-process one keeps a nudge and a tick in this

@@ -95,7 +95,9 @@ export default function GuidePage() {
         >
           <p>
             Busy for a morning? Block it, and that time stops existing as far as callers are concerned.
-            The same page shows the appointments as they arrive, with each visitor’s name and number.
+            The week grid shows the day as it stands — grey for busy, blue for appointments, a green wash
+            where a caller could still be booked — and clicking an empty spot blocks it or books someone in.
+            Month view is the same at a glance.
           </p>
           <p className="mt-2 text-slate-500 dark:text-slate-400">
             You can also book someone in by hand — the same rules apply, so you cannot double-book

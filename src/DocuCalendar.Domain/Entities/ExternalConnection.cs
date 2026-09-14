@@ -40,6 +40,10 @@ public class ExternalConnection
     public int LastPulled { get; set; }
     public int LastPushed { get; set; }
 
+    /// <summary>How often the worker syncs this calendar by itself, in minutes. 0 means only when
+    /// somebody presses "Sync now" — a booking still nudges a push either way.</summary>
+    public int SyncEveryMinutes { get; set; } = 5;
+
     public Guid ConnectedByUserId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

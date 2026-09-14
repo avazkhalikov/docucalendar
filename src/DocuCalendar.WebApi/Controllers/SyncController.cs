@@ -78,8 +78,40 @@ public sealed class SyncController : StaffControllerBase
                 c.LastSyncError,
                 c.LastPulled,
                 c.LastPushed,
+                c.SyncEveryMinutes,
             }),
         });
+    }
+
+    /// <summary>How often the calendar syncs by itself. Anyone who can manage the calendar may
+    /// set it; the choices are the same short list the UI offers.</summary>
+    [HttpPut("connections/{calendarId:guid}")]
+    public async Task<IActionResult> SetInterval(Guid calendarId, [FromBody] IntervalRequest body, CancellationToken ct)
+    {
+        var calendar = await _db.Calendars.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == calendarId && c.TenantId == TenantId, ct);
+        if (calendar == null) return NotFound();
+        if (!CanManage(calendar)) return NotYours();
+        if (!SyncSchedule.IsAllowed(body.SyncEveryMinutes))
+            return BadRequest(new { message = $"Choose one of: {string.Join(", ", SyncSchedule.AllowedIntervals)} minutes (0 = manual only)." });
+
+        var conn = await _db.ExternalConnections.FirstOrDefaultAsync(c => c.CalendarId == calendarId, ct);
+        if (conn == null) return NotFound(new { message = "This calendar is not linked to Outlook or Google." });
+
+        conn.SyncEveryMinutes = body.SyncEveryMinutes;
+        conn.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        // Shortening the interval to something already overdue should not wait for the next tick.
+        if (SyncSchedule.IsDue(conn.Status, conn.SyncEveryMinutes, conn.LastSyncAt, DateTimeOffset.UtcNow))
+            _scheduler.Nudge(calendarId);
+
+        return Ok(new { saved = true });
+    }
+
+    public sealed class IntervalRequest
+    {
+        public int SyncEveryMinutes { get; set; }
     }
 
     /// <summary>

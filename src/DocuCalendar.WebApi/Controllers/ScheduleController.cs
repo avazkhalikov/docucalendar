@@ -66,8 +66,15 @@ public sealed class ScheduleController : StaffControllerBase
             .ToListAsync(ct);
 
         // Uncapped: this drives the "N free" count on every day of the week, and a cap makes the
-        // last days of the range read as fully booked when nothing is booked at all.
-        var slots = await _booking.GetSlotsAsync(tenant, calendar, days, null, ct, maxResults: int.MaxValue);
+        // last days of the range read as fully booked when nothing is booked at all. The engine
+        // scans forward from NOW, not from the range's start — so ask it for enough days to reach
+        // the end of the range (a next-month view would otherwise stop where next week does), and
+        // keep only what falls inside. Its own horizon still applies: days a caller cannot book
+        // yet show no free time, which is the truth.
+        var slotDays = (int)Math.Ceiling((end - DateTimeOffset.UtcNow).TotalDays) + 1;
+        var slots = (await _booking.GetSlotsAsync(tenant, calendar, Math.Clamp(slotDays, 1, 400), null, ct, maxResults: int.MaxValue))
+            .Where(s => s.StartsAtUtc >= start && s.StartsAtUtc < end)
+            .ToList();
 
         // What a mirrored block is called — "Dentist", "1:1 with the dean" — is the person's own
         // business. Their calendar's owner sees it; everyone else, the account owner included,
