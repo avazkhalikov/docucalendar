@@ -35,11 +35,18 @@ public static class SyncPlanner
     /// </summary>
     public static readonly TimeSpan PushGrace = TimeSpan.FromMinutes(10);
 
+    /// <param name="ownEventIds">
+    /// Remote ids of every event this service ever created there, whatever the appointment's
+    /// status now. A cancelled appointment whose remote copy has not been deleted yet is still
+    /// ours — mirroring it as somebody else's busy time would block the very slot the
+    /// cancellation just freed, until the copy is gone and the next run notices.
+    /// </param>
     public static SyncPlan Plan(
         IReadOnlyList<RemoteEvent> remote,
         IReadOnlyList<MirroredBlock> existing,
         IReadOnlyList<LinkedAppointment> linked,
-        DateTimeOffset nowUtc)
+        DateTimeOffset nowUtc,
+        IReadOnlyCollection<string>? ownEventIds = null)
     {
         var add = new List<RemoteEvent>();
         var update = new List<BlockUpdate>();
@@ -52,6 +59,10 @@ public static class SyncPlanner
 
         var existingById = new Dictionary<string, MirroredBlock>(StringComparer.Ordinal);
         foreach (var b in existing) existingById[b.ExternalId] = b;
+
+        var own = ownEventIds is null
+            ? new HashSet<string>(StringComparer.Ordinal)
+            : new HashSet<string>(ownEventIds, StringComparer.Ordinal);
 
         var seenBlocks = new HashSet<string>(StringComparer.Ordinal);
         var seenLinked = new HashSet<string>(StringComparer.Ordinal);
@@ -67,6 +78,18 @@ public static class SyncPlanner
                     cancel.Add(ours.Id);
                 else if (e.StartUtc != ours.StartUtc || e.EndUtc != ours.EndUtc)
                     move.Add(new AppointmentMove(ours.Id, e.StartUtc, e.EndUtc));
+                continue;
+            }
+
+            if (own.Contains(e.Id))
+            {
+                // Ours too, but no longer a live appointment (cancelled here, remote copy still
+                // to be deleted). Not busy time — and if an earlier run mirrored it, undo that.
+                if (existingById.TryGetValue(e.Id, out var phantom))
+                {
+                    seenBlocks.Add(e.Id);
+                    remove.Add(phantom.Id);
+                }
                 continue;
             }
 

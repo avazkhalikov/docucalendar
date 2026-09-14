@@ -178,16 +178,25 @@ public sealed class CalendarSyncService
                             && a.ExternalProvider == provider.Key && a.EndsAt > from && a.StartsAt < to)
                 .ToListAsync(ct);
 
-            // "Busy mirrored" as the UI reports it: the person's own events, not the copies we put
-            // there ourselves — those came back in the listing too and were being counted.
-            var ours = linked.Select(a => a.ExternalEventId!).ToHashSet(StringComparer.Ordinal);
-            pulled = remote.Count(e => e.IsBusy && !e.IsCancelled && !ours.Contains(e.Id));
+            // Every remote copy we ever made on this calendar, live or not. A cancelled appointment
+            // keeps its remote id until the copy is actually deleted (later in this same run), and
+            // in that window the listing still returns it — as somebody else's event, unless we
+            // remember it is ours. Seen live: the first cancellation grew a phantom busy block.
+            var ourIds = (await _db.Appointments
+                    .Where(a => a.CalendarId == calendarId && a.ExternalEventId != null && a.ExternalProvider == provider.Key)
+                    .Select(a => a.ExternalEventId!)
+                    .ToListAsync(ct))
+                .ToHashSet(StringComparer.Ordinal);
+
+            // "Busy mirrored" as the UI reports it: the person's own events, not our copies.
+            pulled = remote.Count(e => e.IsBusy && !e.IsCancelled && !ourIds.Contains(e.Id));
 
             var plan = SyncPlanner.Plan(
                 remote,
                 blocks.Select(b => new MirroredBlock(b.Id, b.ExternalId ?? string.Empty, b.StartsAt, b.EndsAt, b.Reason)).ToList(),
                 linked.Select(a => new LinkedAppointment(a.Id, a.ExternalEventId!, a.StartsAt, a.EndsAt, a.ExternalSyncedAt)).ToList(),
-                now);
+                now,
+                ourIds);
 
             // ---- Apply ----
             foreach (var e in plan.BlocksToAdd)

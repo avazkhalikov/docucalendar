@@ -75,7 +75,29 @@ Columns added to existing tables:
    remote copy, clear the id.
 
 Echo safety: our pushed events come back in the next pull as *ours* (step 3, first bullet) and are
-skipped; mirrored blocks are never pushed anywhere. Nothing loops.
+skipped; mirrored blocks are never pushed anywhere. Nothing loops. "Ours" means **every remote id
+this service ever minted on the calendar, whatever the appointment's status** — a cancelled
+appointment keeps its id until step 5 deletes the copy, and the pull in step 2 runs first. The
+first live cancellation proved why: for one run the still-present copy was mirrored as a phantom
+busy block on exactly the slot the cancellation had freed.
+
+## Proven live (2026-09-14, Google)
+
+Connected hcoder@gmail.com to the owner's calendar. Booked here → in Google within a second of
+the nudge; an event created in Google ("test") → busy here on the next 5-minute tick, title
+visible to the owner; cancelled here → deleted from Google. Two defects surfaced and fixed on
+the day: `calendars.get` is outside the `calendar.events` scope (the account email is read from
+the events listing's `summary` instead), and the phantom block above.
+
+## Inside Docurest
+
+Docurest's **My Calendar** page frames this site (same site → the session cookie works in the
+frame). Framed, the app hides its brand/account/sign-out and keeps the navigation. Provider
+sign-ins cannot render in a frame, so the connect links take the whole tab and the callback
+returns to `{embedHost}/app/calendar?next=/calendars?connected=…`; Docurest passes `next` into
+the SSO link and the sign-in door lands there (local paths only). Return hosts are an allow-list
+(`Sync:EmbedHosts`), and nginx serves `Content-Security-Policy: frame-ancestors` naming the same
+hosts.
 
 The worker runs all connections every 5 minutes, each in its own scope and try/catch — one person's
 dead token never stalls another's sync. A booking or cancellation nudges the worker for that calendar

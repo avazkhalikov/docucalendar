@@ -133,6 +133,37 @@ public class SyncPlannerTests
     }
 
     [Fact]
+    public void ACancelledAppointmentAwaitingRemoteDeletionIsNotMirrored()
+    {
+        // Cancelled here a moment ago; the pull runs before the remote copy is deleted, so the
+        // listing still returns it. It is not a live appointment (not in "linked"), but it IS
+        // ours — mirroring it would block the slot the cancellation just freed.
+        var plan = SyncPlanner.Plan(
+            new[] { Remote("ours-cancelled", 9, 10, "Appointment: Aziz") },
+            Array.Empty<MirroredBlock>(),
+            Array.Empty<LinkedAppointment>(),
+            Now,
+            ownEventIds: new[] { "ours-cancelled" });
+
+        Assert.True(plan.IsEmpty);
+    }
+
+    [Fact]
+    public void APhantomBlockOfOurOwnEventIsRemoved()
+    {
+        var phantom = new[] { new MirroredBlock(Guid.NewGuid(), "ours-cancelled", At(9), At(10), "Appointment: Aziz") };
+        var plan = SyncPlanner.Plan(
+            new[] { Remote("ours-cancelled", 9, 10, "Appointment: Aziz") },
+            phantom,
+            Array.Empty<LinkedAppointment>(),
+            Now,
+            ownEventIds: new[] { "ours-cancelled" });
+
+        Assert.Equal(phantom[0].Id, Assert.Single(plan.BlocksToRemove));
+        Assert.Empty(plan.BlocksToAdd);
+    }
+
+    [Fact]
     public void ACancelledRemoteEventNeverBecomesABlock()
     {
         var plan = SyncPlanner.Plan(new[] { Remote("ev1", 9, 10, cancelled: true) }, Array.Empty<MirroredBlock>(), Array.Empty<LinkedAppointment>(), Now);
