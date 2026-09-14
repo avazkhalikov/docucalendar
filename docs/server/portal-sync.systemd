@@ -1,0 +1,18 @@
+[Unit]
+Description=Give white-label customer domains an nginx block and a certificate
+After=network-online.target nginx.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/portal-sync.env
+ExecStart=/usr/local/bin/portal-sync.sh
+[Unit]
+Description=Check for new white-label customer domains every two minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
