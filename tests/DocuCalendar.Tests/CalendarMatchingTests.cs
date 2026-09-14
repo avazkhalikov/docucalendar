@@ -10,7 +10,9 @@ namespace DocuCalendar.Tests;
 /// </summary>
 public class CalendarMatchingTests
 {
-    private static StaffCalendar Cal(string label) => new() { Id = Guid.NewGuid(), Label = label };
+    // Each a different person: two calendars of ONE person are never an ambiguity (see
+    // DefaultCalendarTests), and the roster here is about telling people apart.
+    private static StaffCalendar Cal(string label) => new() { Id = Guid.NewGuid(), OwnerUserId = Guid.NewGuid(), Label = label };
 
     private static readonly List<StaffCalendar> Roster = new()
     {

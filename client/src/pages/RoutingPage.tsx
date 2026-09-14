@@ -71,7 +71,7 @@ export default function RoutingPage({ me }: { me: Me }) {
       >
         <option value="">No booking offered</option>
         {calendars.map((c) => (
-          <option key={c.id} value={c.id}>{c.label}</option>
+          <option key={c.id} value={c.id}>{c.isDefault ? `★ ${c.label}` : c.label}</option>
         ))}
       </select>
       {savedKey === keyName && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
@@ -87,6 +87,10 @@ export default function RoutingPage({ me }: { me: Me }) {
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-3xl">
           Choose which calendar the AI books into. Leave a context on “No booking offered” and the assistant will not
           mention appointments there at all — the tools simply do not appear for that conversation.
+        </p>
+        <p className="mt-1 text-[12px] text-slate-400 max-w-3xl">
+          ★ marks each person’s default calendar (set on Calendars). Point a context at someone’s default and it follows
+          them if they later star a different calendar of theirs.
         </p>
       </div>
 

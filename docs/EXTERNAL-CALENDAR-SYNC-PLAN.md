@@ -89,6 +89,31 @@ visible to the owner; cancelled here → deleted from Google. Two defects surfac
 the day: `calendars.get` is outside the `calendar.events` scope (the account email is read from
 the events listing's `summary` instead), and the phantom block above.
 
+## One person, several calendars: the star
+
+A person may have more than one calendar here (a work Outlook and a personal Google — each
+calendar links to one provider). `StaffCalendar.IsDefault` marks **the one the assistant books
+into**, one per person; the first calendar a person gets is starred automatically, and retiring
+the starred one passes the star to their oldest remaining calendar. Two rules follow from it:
+
+- **Routing follows the star.** Assistant-booking entries that pointed at the person's previous
+  default are re-pointed when the star moves — "book me by default into this one" is one click,
+  by the person themself (operators for their own, the owner for anyone).
+- **Names resolve through it.** When a caller's words match two or more of ONE person's
+  calendars ("Avaz" → "Avaz" and "Avaz Outlook"), the starred one is chosen; a single match is
+  honoured as named, so the owner's "Admissions" desk is never redirected to the owner's own
+  diary; matches across different people stay an ambiguity unless one is the full name said.
+
+## Proven live (2026-09-14, Outlook 365)
+
+App registration made in the owner's personal Entra directory (multitenant + personal accounts).
+The owner connected a **WIUT work account** — the university tenant allowed the user to consent
+without an admin, which is the case that matters for customers. First sync mirrored six real
+meetings with titles; a booking made here appeared in Outlook within seconds of the nudge;
+cancelling it deleted the Outlook copy; no phantom block. Graph quirks handled: times are
+requested in the account's zone (`Prefer: outlook.timezone`) so all-day events land on the right
+date, and `showAs: free` / declined invitations are not busy.
+
 ## Inside Docurest
 
 Docurest's **My Calendar** page frames this site (same site → the session cookie works in the

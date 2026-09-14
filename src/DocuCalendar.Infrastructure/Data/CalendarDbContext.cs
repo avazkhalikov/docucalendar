@@ -59,6 +59,7 @@ public class CalendarDbContext : DbContext
             e.Property(c => c.MinLeadMinutes).HasDefaultValue(60);
             e.Property(c => c.HorizonDays).HasDefaultValue(30);
             e.Property(c => c.Active).HasDefaultValue(true);
+            e.Property(c => c.IsDefault).HasDefaultValue(false);
             e.Property(c => c.WeeklyAvailabilityJson).HasDefaultValue(StaffCalendar.DefaultWeek);
             e.HasIndex(c => new { c.TenantId, c.Active });
             e.HasIndex(c => c.OwnerUserId);

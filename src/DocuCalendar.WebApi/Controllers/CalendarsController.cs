@@ -55,6 +55,7 @@ public sealed class CalendarsController : StaffControllerBase
                 c.HorizonDays,
                 weeklyAvailability = c.WeeklyAvailabilityJson,
                 c.Active,
+                c.IsDefault,
             }),
             contextDefaults = defaults.Select(d => new { d.TenantContextId, d.CalendarId }),
         });
@@ -82,10 +83,60 @@ public sealed class CalendarsController : StaffControllerBase
         Apply(body, calendar, out var error);
         if (error != null) return BadRequest(new { message = error });
 
+        // A person's first calendar is their default — there is nothing else it could be, and it
+        // means the star is never missing from an account with one calendar per person.
+        calendar.IsDefault = !await _db.Calendars
+            .AnyAsync(c => c.TenantId == TenantId && c.OwnerUserId == calendar.OwnerUserId && c.Active && c.IsDefault, ct);
+
         _db.Calendars.Add(calendar);
         await _db.SaveChangesAsync(ct);
         _logger.LogInformation("[Calendars] {Tenant}: created \"{Label}\".", TenantId, calendar.Label);
         return Ok(new { id = calendar.Id });
+    }
+
+    /// <summary>
+    /// Makes this the calendar the assistant books into when it lands on its person. The owner
+    /// may set it for anyone; an operator only for themselves. Routing entries that pointed at
+    /// the person's previous default move with it — that is the whole point of a default.
+    /// </summary>
+    [HttpPut("{id:guid}/default")]
+    public async Task<IActionResult> MakeDefault(Guid id, CancellationToken ct)
+    {
+        var calendar = await _db.Calendars.FirstOrDefaultAsync(c => c.Id == id && c.TenantId == TenantId, ct);
+        if (calendar == null) return NotFound();
+        if (!CanManage(calendar)) return NotYours();
+        if (!calendar.Active) return BadRequest(new { message = "A retired calendar cannot be the default." });
+
+        var previous = await _db.Calendars
+            .Where(c => c.TenantId == TenantId && c.OwnerUserId == calendar.OwnerUserId && c.IsDefault && c.Id != id)
+            .ToListAsync(ct);
+        foreach (var p in previous)
+        {
+            p.IsDefault = false;
+            p.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+        calendar.IsDefault = true;
+        calendar.UpdatedAt = DateTimeOffset.UtcNow;
+
+        var previousIds = previous.Select(p => p.Id).ToList();
+        var moved = 0;
+        if (previousIds.Count > 0)
+        {
+            var routes = await _db.ContextDefaults
+                .Where(d => d.TenantId == TenantId && previousIds.Contains(d.CalendarId))
+                .ToListAsync(ct);
+            foreach (var r in routes)
+            {
+                r.CalendarId = id;
+                r.UpdatedAt = DateTimeOffset.UtcNow;
+                moved++;
+            }
+        }
+
+        await _db.SaveChangesAsync(ct);
+        _logger.LogInformation("[Calendars] {Tenant}: \"{Label}\" is now the default for its person; {Moved} routing entr(y/ies) followed.",
+            TenantId, calendar.Label, moved);
+        return Ok(new { saved = true, routesMoved = moved });
     }
 
     [HttpPut("{id:guid}")]
@@ -123,6 +174,19 @@ public sealed class CalendarsController : StaffControllerBase
         // A retired calendar must stop being a booking target, or the AI keeps sending people to it.
         var defaults = await _db.ContextDefaults.Where(d => d.TenantId == TenantId && d.CalendarId == id).ToListAsync(ct);
         _db.ContextDefaults.RemoveRange(defaults);
+
+        // Retiring somebody's default hands the star to their oldest remaining calendar, so the
+        // person is never left without one.
+        if (calendar.IsDefault)
+        {
+            calendar.IsDefault = false;
+            var heir = await _db.Calendars
+                .Where(c => c.TenantId == TenantId && c.OwnerUserId == calendar.OwnerUserId && c.Active && c.Id != id)
+                .OrderBy(c => c.CreatedAt)
+                .FirstOrDefaultAsync(ct);
+            if (heir != null) heir.IsDefault = true;
+        }
+
         await _db.SaveChangesAsync(ct);
         return Ok(new { deactivated = true });
     }

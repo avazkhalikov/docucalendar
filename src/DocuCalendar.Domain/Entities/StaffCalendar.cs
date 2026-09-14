@@ -48,6 +48,14 @@ public class StaffCalendar
 
     public bool Active { get; set; } = true;
 
+    /// <summary>
+    /// The one calendar of this person's that the assistant books into when it lands on them —
+    /// one per person. Somebody with a work Outlook and a personal Google calendar has two rows
+    /// here; the star says which is the diary. Routing entries that point at a person's default
+    /// follow it when the star moves, so "book me by default into this one" is a single click.
+    /// </summary>
+    public bool IsDefault { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 

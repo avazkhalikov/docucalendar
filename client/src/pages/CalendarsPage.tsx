@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Loader2, Plus, Save, CalendarClock, Archive, ChevronDown, ChevronRight, Info, BookOpen,
-  RefreshCw, Unlink, AlertTriangle, CheckCircle2, Link2,
+  RefreshCw, Unlink, AlertTriangle, CheckCircle2, Link2, Star,
 } from 'lucide-react';
 import {
   api, connectUrl, embedded, type CalendarRow, type Me, type Person, type SyncConnection, type SyncProvider, type SyncProviderKey,
@@ -280,6 +280,15 @@ function CalendarCard({
     }
   };
 
+  const makeDefault = async () => {
+    try {
+      await api.makeDefaultCalendar(row.id);
+      await onSaved();
+    } catch (e) {
+      onError(e instanceof Error ? e.message : 'Could not change the default.');
+    }
+  };
+
   const num = (value: string, fallback: number) => {
     const parsed = parseInt(value, 10);
     return Number.isNaN(parsed) ? fallback : parsed;
@@ -291,6 +300,24 @@ function CalendarCard({
         <button type="button" onClick={onToggle} className="text-slate-400 hover:text-blue-500">
           {expanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </button>
+        {/* The star: which of this person's calendars the assistant books into. */}
+        {row.active && (
+          <button
+            type="button"
+            onClick={row.isDefault || !row.canEdit ? undefined : makeDefault}
+            disabled={row.isDefault || !row.canEdit}
+            title={
+              row.isDefault
+                ? 'Default for bookings — the assistant books here when it lands on this person'
+                : row.canEdit
+                  ? 'Make this the default for bookings'
+                  : 'Only its person or the account owner can change the default'
+            }
+            className={`${row.isDefault ? 'text-amber-400' : 'text-slate-300 dark:text-slate-600 hover:text-amber-400'} disabled:cursor-default transition-colors`}
+          >
+            <Star className="w-4 h-4" fill={row.isDefault ? 'currentColor' : 'none'} />
+          </button>
+        )}
         <span className="font-medium">{row.label}</span>
         {row.mine ? (
           <span className="px-1.5 py-0.5 rounded text-[11px] bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-300">mine</span>

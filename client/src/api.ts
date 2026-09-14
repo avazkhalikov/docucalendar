@@ -27,6 +27,8 @@ export interface CalendarRow {
   horizonDays: number;
   weeklyAvailability: string;
   active: boolean;
+  /** The one of this person's calendars the assistant books into. */
+  isDefault: boolean;
 }
 
 export interface CalendarsResponse {
@@ -177,6 +179,8 @@ export const api = {
     call<{ saved: boolean }>(`/calendars/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deactivateCalendar: (id: string) =>
     call<{ deactivated: boolean }>(`/calendars/${id}`, { method: 'DELETE' }),
+  makeDefaultCalendar: (id: string) =>
+    call<{ saved: boolean; routesMoved: number }>(`/calendars/${id}/default`, { method: 'PUT' }),
   setContextDefault: (body: { tenantContextId: string | null; calendarId: string | null }) =>
     call<{ saved?: boolean; cleared?: boolean }>('/calendars/context-default', {
       method: 'PUT',

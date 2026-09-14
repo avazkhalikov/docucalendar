@@ -57,18 +57,17 @@ public sealed class CalendarService
         var needle = Normalise(hint);
         if (needle.Length < 3) return null;
 
-        var exact = calendars.FirstOrDefault(c => Normalise(c.Label) == needle);
-        if (exact != null) return exact;
-
+        // Everything the name could mean, exact matches included: "avaz" means both "Avaz" and
+        // "Avaz Outlook", and which of those to book is decided by whose they are, not by which
+        // string happened to match first.
         var contains = calendars.Where(c =>
         {
             var label = Normalise(c.Label);
             return label.Contains(needle, StringComparison.Ordinal) || needle.Contains(label, StringComparison.Ordinal);
         }).ToList();
-        if (contains.Count == 1) return contains[0];
+        if (contains.Count > 0) return Choose(contains, needle);
 
-        // Word overlap: "admissions officer" finds "Aziza — Admissions". Only when exactly one
-        // calendar matches; two candidates mean the visitor must be asked, not guessed at.
+        // Word overlap: "admissions officer" finds "Aziza — Admissions".
         var words = needle.Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Where(w => w.Length >= 4).ToArray();
         if (words.Length == 0) return null;
@@ -78,7 +77,33 @@ public sealed class CalendarService
             var label = Normalise(c.Label);
             return words.Any(w => label.Contains(w, StringComparison.Ordinal));
         }).ToList();
-        return byWord.Count == 1 ? byWord[0] : null;
+        return Choose(byWord, needle);
+    }
+
+    /// <summary>
+    /// One calendar from what a name could mean, or null.
+    ///
+    /// Several candidates that all belong to ONE person are not an ambiguity — "Avaz" and
+    /// "Avaz Outlook" are the same diary seen through two providers, and the person's starred
+    /// default says which to book. A single match is honoured as named, whoever owns it: the
+    /// owner's "Admissions" desk must not be redirected to the owner's personal diary.
+    /// Candidates for different people mean the visitor must be asked, not guessed at — unless
+    /// one of them is the full name they said.
+    /// </summary>
+    public static StaffCalendar? Choose(IReadOnlyList<StaffCalendar> candidates, string needle)
+    {
+        if (candidates.Count == 0) return null;
+        var normalised = Normalise(needle);
+        var exact = candidates.Where(c => Normalise(c.Label) == normalised).ToList();
+
+        var onePerson = candidates.All(c => c.OwnerUserId == candidates[0].OwnerUserId);
+        if (onePerson)
+        {
+            if (candidates.Count == 1) return candidates[0];
+            return candidates.FirstOrDefault(c => c.IsDefault) ?? (exact.Count == 1 ? exact[0] : candidates[0]);
+        }
+
+        return exact.Count == 1 ? exact[0] : null;
     }
 
     private static string Normalise(string s)
