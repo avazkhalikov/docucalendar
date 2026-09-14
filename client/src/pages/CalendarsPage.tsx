@@ -5,8 +5,14 @@ import {
   RefreshCw, Unlink, AlertTriangle, CheckCircle2, Link2,
 } from 'lucide-react';
 import {
-  api, connectUrl, type CalendarRow, type Me, type Person, type SyncConnection, type SyncProvider, type SyncProviderKey,
+  api, connectUrl, embedded, type CalendarRow, type Me, type Person, type SyncConnection, type SyncProvider, type SyncProviderKey,
 } from '../api';
+
+/**
+ * Google and Microsoft refuse to render their sign-in inside a frame, so from within Docurest
+ * the connect links take over the whole tab; the callback brings it back to Docurest afterwards.
+ */
+const connectTarget = embedded ? '_top' : undefined;
 import WeekEditor from '../components/WeekEditor';
 
 /** What the provider round trip can come back with, in words a person can act on. */
@@ -450,6 +456,7 @@ function SyncLine({
             <a
               key={p.key}
               href={connectUrl(p.key, row.id)}
+              target={connectTarget}
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-300 dark:border-slate-700 text-[12px] font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
               <ProviderMark provider={p.key} /> Connect {p.displayName}
@@ -531,6 +538,7 @@ function SyncLine({
           {status === 'reconnect' && row.mine && (
             <a
               href={connectUrl(connection.provider, row.id)}
+              target={connectTarget}
               className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500 hover:bg-amber-600 text-white font-medium"
             >
               Reconnect

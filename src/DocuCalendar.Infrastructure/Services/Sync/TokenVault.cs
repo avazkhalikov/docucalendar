@@ -31,8 +31,10 @@ public sealed class TokenVault
     }
 }
 
-/// <summary>Who started an OAuth connection, carried through the provider round trip.</summary>
-public sealed record SyncState(string TenantId, Guid UserId, Guid CalendarId, string Provider, string Nonce);
+/// <summary>Who started an OAuth connection, carried through the provider round trip.
+/// <paramref name="ReturnTo"/> is the embedding site's origin when the flow began inside
+/// Docurest, so the callback can send the browser back there instead of to this site.</summary>
+public sealed record SyncState(string TenantId, Guid UserId, Guid CalendarId, string Provider, string Nonce, string? ReturnTo = null);
 
 /// <summary>
 /// The state parameter of the OAuth dance, protected and time-limited. The callback trusts nothing

@@ -133,7 +133,33 @@ export interface SyncRunResult {
 
 /** A full-page navigation, not a fetch: the provider's sign-in has to own the browser. */
 export function connectUrl(provider: SyncProviderKey, calendarId: string): string {
-  return `/api/sync/${provider}/connect?calendarId=${encodeURIComponent(calendarId)}`;
+  const base = `/api/sync/${provider}/connect?calendarId=${encodeURIComponent(calendarId)}`;
+  const origin = embeddingOrigin();
+  return origin ? `${base}&returnTo=${encodeURIComponent(origin)}` : base;
+}
+
+/** True when this app is running inside Docurest's page rather than on its own tab. */
+export const embedded = (() => {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+})();
+
+/**
+ * The site that embeds us, so a provider sign-in (which must leave the frame — Google and
+ * Microsoft refuse to render inside one) can come back to the page the person was on.
+ * Same-site frames get the parent's origin as the referrer; the server checks it against its
+ * own list before honouring it.
+ */
+export function embeddingOrigin(): string | null {
+  if (!embedded) return null;
+  try {
+    return document.referrer ? new URL(document.referrer).origin : null;
+  } catch {
+    return null;
+  }
 }
 
 export const api = {

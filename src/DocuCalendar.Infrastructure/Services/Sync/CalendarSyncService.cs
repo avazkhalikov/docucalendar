@@ -169,7 +169,6 @@ public sealed class CalendarSyncService
 
             // ---- Pull ----
             var remote = await provider.ListEventsAsync(access, from, to, zone, ct);
-            pulled = remote.Count(e => e.IsBusy && !e.IsCancelled);
 
             var blocks = await _db.BusyBlocks
                 .Where(b => b.CalendarId == calendarId && b.Source == provider.Key && b.EndsAt > from && b.StartsAt < to)
@@ -178,6 +177,11 @@ public sealed class CalendarSyncService
                 .Where(a => a.CalendarId == calendarId && a.Status == "confirmed" && a.ExternalEventId != null
                             && a.ExternalProvider == provider.Key && a.EndsAt > from && a.StartsAt < to)
                 .ToListAsync(ct);
+
+            // "Busy mirrored" as the UI reports it: the person's own events, not the copies we put
+            // there ourselves — those came back in the listing too and were being counted.
+            var ours = linked.Select(a => a.ExternalEventId!).ToHashSet(StringComparer.Ordinal);
+            pulled = remote.Count(e => e.IsBusy && !e.IsCancelled && !ours.Contains(e.Id));
 
             var plan = SyncPlanner.Plan(
                 remote,

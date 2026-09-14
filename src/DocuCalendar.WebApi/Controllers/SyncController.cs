@@ -88,7 +88,7 @@ public sealed class SyncController : StaffControllerBase
     /// connecting on an operator's row would bind the owner's own mailbox to somebody else's day.
     /// </summary>
     [HttpGet("{provider}/connect")]
-    public async Task<IActionResult> Connect(string provider, [FromQuery] Guid calendarId, CancellationToken ct)
+    public async Task<IActionResult> Connect(string provider, [FromQuery] Guid calendarId, [FromQuery] string? returnTo, CancellationToken ct)
     {
         var p = Find(provider);
         if (p == null) return NotFound(new { message = "Unknown calendar provider." });
@@ -105,9 +105,29 @@ public sealed class SyncController : StaffControllerBase
             });
 
         var nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(8));
-        var state = _state.Protect(new SyncState(TenantId, UserId, calendar.Id, p.Key, nonce));
+        var state = _state.Protect(new SyncState(TenantId, UserId, calendar.Id, p.Key, nonce, AllowedReturn(returnTo)));
         return Redirect(p.BuildAuthorizeUrl(state, RedirectUriFor(p.Key)));
     }
+
+    /// <summary>The embedding site's origin, but only if it is one of ours.</summary>
+    private string? AllowedReturn(string? returnTo)
+    {
+        if (string.IsNullOrWhiteSpace(returnTo)) return null;
+        var candidate = returnTo.Trim().TrimEnd('/');
+        return _options.EmbedHosts
+            .Select(h => h.Trim().TrimEnd('/'))
+            .FirstOrDefault(h => string.Equals(h, candidate, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Where the browser goes when the provider round trip ends. Started inside Docurest → back
+    /// to Docurest's calendar page, which re-embeds this site at the given path; started here →
+    /// the path itself.
+    /// </summary>
+    private static string Landing(SyncState? state, string localPath) =>
+        state?.ReturnTo is { Length: > 0 } origin
+            ? $"{origin}/app/calendar?next={Uri.EscapeDataString(localPath)}"
+            : localPath;
 
     /// <summary>
     /// Step two: back from the provider. Anonymous by necessity — the browser may arrive without
@@ -130,11 +150,11 @@ public sealed class SyncController : StaffControllerBase
         var s = _state.Unprotect(state);
         if (s == null || !string.Equals(s.Provider, p.Key, StringComparison.Ordinal))
             return Redirect("/calendars?connectError=expired");
-        if (string.IsNullOrEmpty(code)) return Redirect("/calendars?connectError=denied");
+        if (string.IsNullOrEmpty(code)) return Redirect(Landing(s, "/calendars?connectError=denied"));
 
         var calendar = await _db.Calendars.AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == s.CalendarId && c.TenantId == s.TenantId, ct);
-        if (calendar == null) return Redirect("/calendars?connectError=missing");
+        if (calendar == null) return Redirect(Landing(s, "/calendars?connectError=missing"));
 
         try
         {
@@ -145,7 +165,7 @@ public sealed class SyncController : StaffControllerBase
                 // one when consent was not re-asked; the authorize URL asks for it every time, so
                 // this is rare — but silent death is not an acceptable failure mode.
                 _logger.LogWarning("[Sync] {Provider} returned no refresh token for {Tenant}/{Calendar}.", p.Key, s.TenantId, calendar.Label);
-                return Redirect("/calendars?connectError=norefresh");
+                return Redirect(Landing(s, "/calendars?connectError=norefresh"));
             }
 
             var account = await p.GetAccountAsync(tokens.AccessToken, ct);
@@ -179,12 +199,12 @@ public sealed class SyncController : StaffControllerBase
             _scheduler.Nudge(calendar.Id);
             _logger.LogInformation("[Sync] {Tenant}: \"{Label}\" connected to {Provider} as {Email}.",
                 s.TenantId, calendar.Label, p.Key, account.Email);
-            return Redirect($"/calendars?connected={p.Key}");
+            return Redirect(Landing(s, $"/calendars?connected={p.Key}"));
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "[Sync] Connecting {Provider} failed for {Tenant}/{Calendar}.", p.Key, s.TenantId, calendar.Label);
-            return Redirect("/calendars?connectError=exchange");
+            return Redirect(Landing(s, "/calendars?connectError=exchange"));
         }
     }
 

@@ -37,7 +37,7 @@ public sealed class SessionController : ControllerBase
     /// </summary>
     [HttpGet("sso")]
     [AllowAnonymous]
-    public async Task<IActionResult> Sso([FromQuery] string? t, CancellationToken ct)
+    public async Task<IActionResult> Sso([FromQuery] string? t, [FromQuery] string? next, CancellationToken ct)
     {
         var secret = _config["Docurest:SsoSecret"] ?? string.Empty;
         var identity = SsoToken.Verify(t, secret, DateTimeOffset.UtcNow);
@@ -81,7 +81,11 @@ public sealed class SessionController : ControllerBase
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
 
-        return Redirect("/");
+        // A local path only: an open redirect on the sign-in door would be a phishing kit.
+        var landing = next is { Length: > 1 and < 400 } && next.StartsWith('/') && !next.StartsWith("//") && !next.Contains('\\')
+            ? next
+            : "/";
+        return Redirect(landing);
     }
 
     [HttpGet("me")]

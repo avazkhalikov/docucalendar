@@ -22,6 +22,13 @@ public sealed class SyncOptions
     /// </summary>
     public string? ActiveSlotFile { get; set; }
 
+    /// <summary>
+    /// Sites allowed to embed this one and to be returned to after a provider sign-in — Docurest
+    /// and its white-label hosts. Origins only; anything else offered as a return address is
+    /// ignored, because a redirect to an arbitrary site at the end of a sign-in is a phishing kit.
+    /// </summary>
+    public string[] EmbedHosts { get; set; } = { "https://docurest.com", "https://ai-assistant.wiut.uz" };
+
     public MicrosoftSyncApp Microsoft { get; set; } = new();
     public GoogleSyncApp Google { get; set; } = new();
 }

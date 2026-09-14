@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
-import { CalendarDays, LogOut, Loader2, Users, CalendarClock, Share2, AlertTriangle, BookOpen } from 'lucide-react';
-import { api, ApiError, type Me } from './api';
+import { CalendarDays, LogOut, Loader2, Users, CalendarClock, Share2, AlertTriangle, BookOpen, ExternalLink } from 'lucide-react';
+import { api, ApiError, embedded, type Me } from './api';
 import CalendarsPage from './pages/CalendarsPage';
 import SchedulePage from './pages/SchedulePage';
 import RoutingPage from './pages/RoutingPage';
@@ -42,14 +42,18 @@ export default function App() {
         : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/70 dark:hover:bg-slate-800'
     }`;
 
+  // Inside Docurest's page the shell around us is Docurest's: no second brand, no second
+  // account line, no sign-out that would only sign out the frame. The navigation stays.
   return (
     <div className="min-h-screen">
       <header className="border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-[#101016]">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3 flex-wrap">
-          <div className="flex items-center gap-2 mr-2">
-            <CalendarDays className="w-5 h-5 text-blue-500" />
-            <span className="font-semibold">DocuCalendar</span>
-          </div>
+        <div className={`max-w-6xl mx-auto px-4 flex items-center gap-3 flex-wrap ${embedded ? 'py-2' : 'py-3'}`}>
+          {!embedded && (
+            <div className="flex items-center gap-2 mr-2">
+              <CalendarDays className="w-5 h-5 text-blue-500" />
+              <span className="font-semibold">DocuCalendar</span>
+            </div>
+          )}
 
           <nav className="flex items-center gap-1">
             <NavLink to="/calendars" className={navClass}>
@@ -68,29 +72,41 @@ export default function App() {
             </NavLink>
           </nav>
 
-          <div className="ml-auto flex items-center gap-3 text-sm">
-            <span className="text-slate-500 dark:text-slate-400">
-              {me.accountName} · <span className="text-slate-700 dark:text-slate-200">{me.name}</span>
-              <span className="ml-1.5 px-1.5 py-0.5 rounded text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-                {me.role}
-              </span>
-            </span>
-            <button
-              type="button"
-              onClick={async () => {
-                await api.logout();
-                setState('signed-out');
-              }}
-              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-              title="Sign out"
+          {embedded ? (
+            <a
+              href="/"
+              target="_blank"
+              rel="noreferrer"
+              className="ml-auto inline-flex items-center gap-1 text-[12px] text-slate-400 hover:text-blue-500"
+              title="Open the calendar in its own tab"
             >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
+              Own tab <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          ) : (
+            <div className="ml-auto flex items-center gap-3 text-sm">
+              <span className="text-slate-500 dark:text-slate-400">
+                {me.accountName} · <span className="text-slate-700 dark:text-slate-200">{me.name}</span>
+                <span className="ml-1.5 px-1.5 py-0.5 rounded text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                  {me.role}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={async () => {
+                  await api.logout();
+                  setState('signed-out');
+                }}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                title="Sign out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-6">
+      <main className={`max-w-6xl mx-auto px-4 ${embedded ? 'py-4' : 'py-6'}`}>
         <Routes>
           <Route path="/" element={<Navigate to="/calendars" replace />} />
           <Route path="/calendars" element={<CalendarsPage me={me} />} />
@@ -124,16 +140,26 @@ function SignedOut() {
             <AlertTriangle className="w-4 h-4" /> That sign-in link had expired.
           </p>
         ) : null}
-        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-          Open this from Docurest — <span className="font-medium">My Calendar</span> in the sidebar. There is no
-          separate password here; your Docurest account is the key.
-        </p>
-        <a
-          href="https://docurest.com/app/calendar"
-          className="mt-4 inline-block px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
-        >
-          Go to Docurest
-        </a>
+        {embedded ? (
+          // Inside Docurest a dead session means the sign-in link this frame was opened with has
+          // expired; reloading the page mints a fresh one.
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            Your calendar session has ended. Reload this page to sign in again.
+          </p>
+        ) : (
+          <>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Open this from Docurest — <span className="font-medium">My Calendar</span> in the sidebar. There is no
+              separate password here; your Docurest account is the key.
+            </p>
+            <a
+              href="https://docurest.com/app/calendar"
+              className="mt-4 inline-block px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
+            >
+              Go to Docurest
+            </a>
+          </>
+        )}
       </div>
     </div>
   );
