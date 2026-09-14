@@ -95,12 +95,18 @@ public sealed class GoogleCalendarProvider : ICalendarProvider
 
     public async Task<RemoteAccount> GetAccountAsync(string accessToken, CancellationToken ct)
     {
-        // The primary calendar's id IS the account's email — no profile scope needed.
+        // The calendar.events scope covers events, not the calendar's own record — calendars.get
+        // answers 403 with it (learned on the very first live connection). An events listing is
+        // in scope, and it carries the calendar's title, which for the primary calendar is the
+        // account's email. One cheap call, and nothing extra on the consent screen.
         var http = Api(accessToken);
-        using var resp = await http.GetAsync($"{ApiBase}/calendars/primary", ct);
+        var url = $"{ApiBase}/calendars/primary/events?maxResults=1&singleEvents=true" +
+                  $"&timeMin={Uri.EscapeDataString(DateTimeOffset.UtcNow.ToString("o"))}";
+        using var resp = await http.GetAsync(url, ct);
         await ThrowIfFailedAsync(resp, "read the primary calendar", ct);
         using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync(ct));
-        return new RemoteAccount(Str(doc.RootElement, "id") ?? "unknown", Str(doc.RootElement, "summary"));
+        var summary = Str(doc.RootElement, "summary");
+        return new RemoteAccount(string.IsNullOrWhiteSpace(summary) ? "primary calendar" : summary, null);
     }
 
     public async Task<IReadOnlyList<RemoteEvent>> ListEventsAsync(
