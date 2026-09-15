@@ -13,7 +13,8 @@ import WeekEditor from '../components/WeekEditor';
 import BookingScriptEditor from '../components/BookingScriptEditor';
 import type { BookingTemplate } from '../api';
 import { ProviderMark, ago, SYNC_INTERVALS } from '../components/SyncBits';
-import { parseBookingScript, serialiseBookingScript, type BookingScript } from '../api';
+import { parseBookingScript, serialiseBookingScript, parseStaffCallers, serialiseStaffCallers, type BookingScript, type StaffCaller } from '../api';
+import StaffCallersEditor from '../components/StaffCallersEditor';
 
 /**
  * Google and Microsoft refuse to render their sign-in inside a frame, so from within the
@@ -254,12 +255,14 @@ function CalendarCard({
 }) {
   const [draft, setDraft] = useState(row);
   const [script, setScript] = useState<BookingScript>(() => parseBookingScript(row.bookingScript));
+  const [staffCallers, setStaffCallers] = useState<StaffCaller[]>(() => parseStaffCallers(row.staffCallers));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     setDraft(row);
     setScript(parseBookingScript(row.bookingScript));
+    setStaffCallers(parseStaffCallers(row.staffCallers));
   }, [row]);
 
   const save = async () => {
@@ -275,6 +278,7 @@ function CalendarCard({
         horizonDays: draft.horizonDays,
         weeklyAvailability: draft.weeklyAvailability,
         bookingScript: serialiseBookingScript(script),
+        staffCallers: serialiseStaffCallers(staffCallers),
       });
       setSaved(true);
       await onSaved();
@@ -448,6 +452,33 @@ function CalendarCard({
 
           <div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2">Working week</p>
+            {/* The hours can also be set where the person already lives — Outlook or Google — with
+                events named exactly "Bookable". While any exist they replace the week below, so
+                the fact is shown here, next to the week they override. */}
+            {row.bookableWindows + row.staffWindows > 0 ? (
+              <p className="mb-2 text-[11px] rounded-md px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300">
+                <strong>
+                  {row.bookableWindows} “Bookable” window{row.bookableWindows === 1 ? '' : 's'}
+                  {row.staffWindows > 0 ? ` and ${row.staffWindows} “Bookable staff” window${row.staffWindows === 1 ? '' : 's'}` : ''}
+                </strong>{' '}
+                found in the linked calendar for the coming days. While they exist, only those hours are offered and the working
+                week below is ignored. Staff hours are shown only to callers on the staff list. Real meetings and appointments
+                inside a window still block it.
+              </p>
+            ) : (
+              <p className="mb-2 text-[11px] text-slate-400">
+                Prefer to set these hours in Outlook or Google? Put an event named exactly <strong className="font-medium text-slate-600 dark:text-slate-300">Bookable</strong>{' '}
+                (any capitalisation, nothing else in the title) over the hours you take appointments — recurring or one-off, up to{' '}
+                {row.horizonDays} days ahead. While such events exist, only those hours are offered, cut into{' '}
+                {row.slotMinutes}-minute appointments with your gap setting, and the week below is ignored. Name an event{' '}
+                <strong className="font-medium text-slate-600 dark:text-slate-300">Bookable staff</strong> to keep those hours for
+                colleagues: only calls from the numbers on the staff list below are offered them. Mark them{' '}
+                <em>Show as: Free</em> so colleagues do not see you as busy; it works either way.
+              </p>
+            )}
+            <div className="mb-3">
+              <StaffCallersEditor value={staffCallers} disabled={!row.canEdit} onChange={setStaffCallers} />
+            </div>
             <WeekEditor
               value={draft.weeklyAvailability}
               disabled={!row.canEdit}

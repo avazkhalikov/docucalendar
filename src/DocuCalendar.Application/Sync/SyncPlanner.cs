@@ -1,3 +1,4 @@
+using DocuCalendar.Application.Scheduling;
 namespace DocuCalendar.Application.Sync;
 
 /// <summary>A busy block this service already holds for the remote calendar, inside the window.</summary>
@@ -93,7 +94,11 @@ public static class SyncPlanner
                 continue;
             }
 
-            var occupies = e.IsBusy && !e.IsCancelled && e.EndUtc > e.StartUtc;
+            // A "Bookable" event is mirrored whether it is marked Free or Busy: it is the person's
+            // way of saying "book me here", and people forget the Free setting. The slot engine
+            // reads it as a window, never as taken time (BookableWindows).
+            var isWindow = BookableWindows.IsBookable(e.Subject);
+            var occupies = (e.IsBusy || isWindow) && !e.IsCancelled && e.EndUtc > e.StartUtc;
             if (!occupies)
             {
                 // Marked free, declined, or cancelled: if we were mirroring it, stop.

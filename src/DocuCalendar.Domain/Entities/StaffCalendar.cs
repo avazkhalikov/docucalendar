@@ -62,6 +62,8 @@ public class StaffCalendar
     /// JSON, parsed by BookingScript; null or unreadable means "the standard way".
     /// </summary>
     public string? BookingScriptJson { get; set; }
+    /// <summary>Colleagues whose calls unlock the "Bookable staff" hours: [{name, phone}], see StaffCallers.</summary>
+    public string? StaffCallersJson { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

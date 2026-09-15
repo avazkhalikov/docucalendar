@@ -55,6 +55,20 @@ public sealed class CalendarsController : StaffControllerBase
             .Distinct()
             .ToListAsync(ct)).ToHashSet();
 
+        // "Bookable" windows the person marked in their own Outlook or Google, still ahead of us.
+        // Shown on the row because while any exist the working week is ignored — a fact the owner
+        // must be able to see, or a blank Tuesday looks like a bug.
+        var now = DateTimeOffset.UtcNow;
+        var calendarIds = calendars.Select(c => c.Id).ToList();
+        var upcoming = await _db.BusyBlocks.AsNoTracking()
+            .Where(b => calendarIds.Contains(b.CalendarId) && b.EndsAt > now && b.Reason != null)
+            .Select(b => new { b.CalendarId, b.Reason })
+            .ToListAsync(ct);
+        var publicWindows = upcoming.Where(b => BookableWindows.KindOf(b.Reason) == BookableKind.Public)
+            .GroupBy(b => b.CalendarId).ToDictionary(g => g.Key, g => g.Count());
+        var staffWindows = upcoming.Where(b => BookableWindows.KindOf(b.Reason) == BookableKind.Staff)
+            .GroupBy(b => b.CalendarId).ToDictionary(g => g.Key, g => g.Count());
+
         return Ok(new
         {
             canManageAll = IsOwner,
@@ -67,6 +81,9 @@ public sealed class CalendarsController : StaffControllerBase
                 mine = c.OwnerUserId == UserId,
                 canEdit = CanManage(c),
                 hasAppointments = withAppointments.Contains(c.Id),
+                bookableWindows = publicWindows.GetValueOrDefault(c.Id),
+                staffWindows = staffWindows.GetValueOrDefault(c.Id),
+                staffCallers = c.StaffCallersJson,
                 c.SlotMinutes,
                 c.MaxMinutes,
                 c.BufferMinutes,
@@ -346,11 +363,20 @@ public sealed class CalendarsController : StaffControllerBase
                 calendar.BookingScriptJson = script.IsEmpty ? null : script.ToJson();
             }
         }
+        if (body.StaffCallers != null)
+        {
+            // Empty string clears the list. The numbers are what unlock "Bookable staff" hours.
+            var problem = StaffCallers.Validate(body.StaffCallers, out var staff);
+            if (problem != null) { error = problem; return; }
+            calendar.StaffCallersJson = StaffCallers.ToJson(staff);
+        }
     }
 
     public sealed class CalendarRequest
     {
         public string? Label { get; set; }
+        /// <summary>The staff list as JSON [{name, phone}]; empty string clears it. See StaffCallers.</summary>
+        public string? StaffCallers { get; set; }
         public Guid? OwnerUserId { get; set; }
         public int? SlotMinutes { get; set; }
         public int? MaxMinutes { get; set; }

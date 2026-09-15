@@ -63,6 +63,7 @@ public class CalendarDbContext : DbContext
             e.Property(c => c.IsDefault).HasDefaultValue(false);
             e.Property(c => c.WeeklyAvailabilityJson).HasDefaultValue(StaffCalendar.DefaultWeek);
             e.Property(c => c.BookingScriptJson).HasMaxLength(8000);
+            e.Property(c => c.StaffCallersJson).HasMaxLength(16000);
             e.HasIndex(c => new { c.TenantId, c.Active });
             e.HasIndex(c => c.OwnerUserId);
         });

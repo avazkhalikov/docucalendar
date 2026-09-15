@@ -130,6 +130,17 @@ export default function GuidePage() {
             Move or delete one of those appointments in Outlook or Google and this calendar follows, and the
             team is told. Your event titles stay yours: colleagues see only “Busy”.
           </p>
+          <p className="mt-2 text-slate-500 dark:text-slate-400">
+            Take appointments only at certain hours? Set them from Outlook or Google: put an event named exactly{' '}
+            <strong className="font-medium text-slate-800 dark:text-slate-200">Bookable</strong> over each window — say
+            10–11 and 16–18 on Mondays — recurring or one-off, up to a month ahead. While such events exist, only those
+            hours are offered, cut into your appointment length, and the working week is ignored. Any capitalisation
+            works, but nothing else may be in the title. Mark them <em>Show as: Free</em> so colleagues do not see you
+            as busy; the assistant honours them either way. Hours for colleagues only? Name the event{' '}
+            <strong className="font-medium text-slate-800 dark:text-slate-200">Bookable staff</strong> and list your
+            colleagues' phone numbers under <em>Staff callers</em> on the calendar: a call from one of those numbers is
+            offered the staff hours too; everyone else sees only the public ones.
+          </p>
         </Step>
       </ol>
 

@@ -1,3 +1,4 @@
+using DocuCalendar.Application.Scheduling;
 using DocuCalendar.Application.Sync;
 using DocuCalendar.Domain.Entities;
 using DocuCalendar.Infrastructure.Data;
@@ -194,7 +195,7 @@ public sealed class CalendarSyncService
                 .ToHashSet(StringComparer.Ordinal);
 
             // "Busy mirrored" as the UI reports it: the person's own events, not our copies.
-            pulled = remote.Count(e => e.IsBusy && !e.IsCancelled && !ourIds.Contains(e.Id));
+            pulled = remote.Count(e => e.IsBusy && !e.IsCancelled && !ourIds.Contains(e.Id) && !BookableWindows.IsBookable(e.Subject));
 
             var plan = SyncPlanner.Plan(
                 remote,

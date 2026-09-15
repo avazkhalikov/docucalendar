@@ -22,6 +22,12 @@ export interface CalendarRow {
   canEdit: boolean;
   /** True once anything was ever booked here: removing it then retires rather than deletes. */
   hasAppointments: boolean;
+  /** "Bookable" events found in the linked Outlook/Google calendar, still ahead. While any windows exist only those hours are offered. */
+  bookableWindows: number;
+  /** "Bookable staff" events ahead — offered only to callers on the staff list. */
+  staffWindows: number;
+  /** The staff list as JSON [{name, phone}], or null. */
+  staffCallers: string | null;
   slotMinutes: number;
   maxMinutes: number;
   bufferMinutes: number;
@@ -69,6 +75,28 @@ export function parseBookingScript(json: string | null | undefined): BookingScri
 }
 
 /** Serialises for saving; an all-empty script becomes '' so the server clears it. */
+/** A colleague allowed into the "Bookable staff" hours, by the number they call from. */
+export interface StaffCaller {
+  name: string;
+  phone: string;
+}
+
+export function parseStaffCallers(json: string | null | undefined): StaffCaller[] {
+  if (!json) return [];
+  try {
+    const raw = JSON.parse(json) as Array<Partial<StaffCaller>>;
+    return Array.isArray(raw) ? raw.map((s) => ({ name: s.name ?? '', phone: s.phone ?? '' })) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Blank rows are dropped; an empty list is the empty string, which clears it on the server. */
+export function serialiseStaffCallers(list: StaffCaller[]): string {
+  const rows = list.filter((s) => s.name.trim() || s.phone.trim()).map((s) => ({ name: s.name.trim(), phone: s.phone.trim() }));
+  return rows.length === 0 ? '' : JSON.stringify(rows);
+}
+
 export function serialiseBookingScript(script: BookingScript): string {
   const questions = script.questions.filter((q) => q.ask.trim());
   const services = script.services.filter((s) => s.name.trim() && s.minutes > 0);

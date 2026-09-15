@@ -47,12 +47,13 @@ public sealed class BookingService
     /// </summary>
     public async Task<IReadOnlyList<Slot>> GetSlotsAsync(
         TenantRegistration tenant, StaffCalendar calendar, int days, int? minutes, CancellationToken ct,
-        int maxResults = SlotEngine.DefaultMaxResults, DateOnly? from = null, int perDay = 0)
+        int maxResults = SlotEngine.DefaultMaxResults, DateOnly? from = null, int perDay = 0, string? callerPhone = null)
     {
         var zone = TenantService.ZoneOf(tenant);
         var now = DateTimeOffset.UtcNow;
         var busy = await LoadBusyAsync(calendar.Id, now.AddDays(-1), now.AddDays(calendar.HorizonDays + 1), ct);
-        return SlotEngine.GetSlots(RulesOf(calendar), zone, busy, now, days, minutes, maxResults, from, perDay);
+        var windows = await LoadWindowsAsync(calendar, now.AddDays(-1), now.AddDays(calendar.HorizonDays + 1), callerPhone, ct);
+        return SlotEngine.GetSlots(RulesOf(calendar), zone, busy, now, days, minutes, maxResults, from, perDay, windows);
     }
 
     /// <summary>
@@ -75,7 +76,8 @@ public sealed class BookingService
         string? sourceRef,
         string? serviceName,
         string? answersJson,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? callerPhone = null)
     {
         visitorName = (visitorName ?? string.Empty).Trim();
         visitorPhone = (visitorPhone ?? string.Empty).Trim();
@@ -102,11 +104,12 @@ public sealed class BookingService
         try
         {
             var busy = await LoadBusyAsync(calendar.Id, now.AddDays(-1), startUtc.AddDays(1), ct);
+            var windows = await LoadWindowsAsync(calendar, now.AddDays(-1), now.AddDays(calendar.HorizonDays + 1), callerPhone, ct);
 
-            if (!SlotEngine.IsOfferable(rules, zone, busy, now, startUtc, minutes))
+            if (!SlotEngine.IsOfferable(rules, zone, busy, now, startUtc, minutes, windows))
             {
                 var alternatives = SlotEngine
-                    .GetSlots(rules, zone, busy, now, Math.Min(7, calendar.HorizonDays), minutes, maxResults: 3);
+                    .GetSlots(rules, zone, busy, now, Math.Min(7, calendar.HorizonDays), minutes, maxResults: 3, windows: windows);
                 return BookOutcome.Taken(
                     "That time is no longer available.",
                     alternatives);
@@ -146,7 +149,8 @@ public sealed class BookingService
             await SafeRollback(tx, ct);
             _logger.LogInformation(ex, "[Booking] {Tenant}: lost a race for {Start:u}.", tenant.TenantId, startUtc);
             var busy = await LoadBusyAsync(calendar.Id, now.AddDays(-1), startUtc.AddDays(1), ct);
-            var alternatives = SlotEngine.GetSlots(rules, zone, busy, now, Math.Min(7, calendar.HorizonDays), minutes, maxResults: 3);
+            var windows = await LoadWindowsAsync(calendar, now.AddDays(-1), now.AddDays(calendar.HorizonDays + 1), callerPhone, ct);
+            var alternatives = SlotEngine.GetSlots(rules, zone, busy, now, Math.Min(7, calendar.HorizonDays), minutes, maxResults: 3, windows: windows);
             return BookOutcome.Taken("That time was taken a moment ago.", alternatives);
         }
         catch (Exception)
@@ -197,6 +201,29 @@ public sealed class BookingService
 
     /// <summary>Everything that occupies the calendar: blocked time and appointments alike. The
     /// slot engine does not care which is which, and neither should a visitor.</summary>
+    /// <summary>
+    /// The "Bookable" / "Bookable staff" windows the person marked in their own calendar (mirrored
+    /// blocks whose title is exactly one of those), narrowed to what THIS caller may see: public
+    /// windows always, staff windows only when the call comes from a number on the calendar's
+    /// staff list. While any remain, the slot engine offers only them.
+    /// </summary>
+    public async Task<List<Interval>> LoadWindowsAsync(StaffCalendar calendar, DateTimeOffset fromUtc, DateTimeOffset toUtc, string? callerPhone, CancellationToken ct)
+    {
+        fromUtc = fromUtc.ToUniversalTime();
+        toUtc = toUtc.ToUniversalTime();
+        var blocks = await _db.BusyBlocks.AsNoTracking()
+            .Where(b => b.CalendarId == calendar.Id && b.EndsAt > fromUtc && b.StartsAt < toUtc && b.Reason != null)
+            .Select(b => new { b.StartsAt, b.EndsAt, b.Reason })
+            .ToListAsync(ct);
+        var windows = blocks
+            .Select(b => (Kind: BookableWindows.KindOf(b.Reason), b.StartsAt, b.EndsAt))
+            .Where(b => b.Kind != null)
+            .Select(b => new BookableWindow(new Interval(b.StartsAt, b.EndsAt), b.Kind!.Value))
+            .ToList();
+        var isStaff = BookableWindows.IsStaffCaller(callerPhone, StaffCallers.Phones(calendar.StaffCallersJson));
+        return BookableWindows.Visible(windows, isStaff);
+    }
+
     public async Task<List<Interval>> LoadBusyAsync(Guid calendarId, DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct)
     {
         // Belt and braces: a caller may hand us an instant carrying a local offset (a time that
@@ -205,10 +232,14 @@ public sealed class BookingService
         fromUtc = fromUtc.ToUniversalTime();
         toUtc = toUtc.ToUniversalTime();
 
-        var blocks = await _db.BusyBlocks.AsNoTracking()
+        // A "Bookable" / "Bookable staff" block is a window, not taken time — LoadWindowsAsync
+        // reads those. Classified in memory, so the rule lives in one place (BookableWindows).
+        var blocks = (await _db.BusyBlocks.AsNoTracking()
             .Where(b => b.CalendarId == calendarId && b.EndsAt > fromUtc && b.StartsAt < toUtc)
-            .Select(b => new { b.StartsAt, b.EndsAt })
-            .ToListAsync(ct);
+            .Select(b => new { b.StartsAt, b.EndsAt, b.Reason })
+            .ToListAsync(ct))
+            .Where(b => !BookableWindows.IsBookable(b.Reason))
+            .ToList();
 
         var appointments = await _db.Appointments.AsNoTracking()
             .Where(a => a.CalendarId == calendarId && a.Status == "confirmed" && a.EndsAt > fromUtc && a.StartsAt < toUtc)

@@ -254,3 +254,34 @@ The booking webhook handler learns an `event` field: `booked` (today's message),
 Choosing a non-primary remote calendar; mirroring attendees; syncing appointments *edited* here
 (there is no edit here, only cancel); Outlook categories/colours; push notifications from the
 providers instead of polling (5-minute polling is what was asked for and is plenty).
+
+## "Bookable" windows from the person's own calendar (2026-09-15)
+
+A rector who takes appointments 10–11 and 16–18 lives in Outlook, not here. So the hours can be
+set where he already is: an event named exactly **Bookable** (any capitalisation, nothing else in
+the title) over each window — recurring or one-off, up to the booking horizon. The sync mirrors
+such events whether they are marked Free or Busy (people forget the Free setting); the slot engine
+reads them as windows, never as taken time. While a calendar has any windows ahead, **only they
+are offered** and its working week is ignored, cut into the calendar's slot length with its gap
+setting; a real meeting or appointment inside a window still blocks it; a day without a window is
+closed. Without any windows, the working week applies as before. The Bookable event is never cut
+or edited by a booking — the appointment is pushed on top of it as its own event, which is also
+how Google's appointment schedules look — so a cancellation reopens the time by itself.
+
+Where it lives: `BookableWindows.IsBookable` (the word), `SyncPlanner` (mirrors it regardless of
+Free/Busy), `BookingService.LoadWindowsAsync` (blocks whose title is the word), `SlotEngine.GetSlots(windows:)`.
+The calendar row shows how many windows were found and explains the word; the guide's sync step
+says the same. Tell people to mark the event *Show as: Free* so colleagues do not see them busy.
+
+### "Bookable staff" — hours for colleagues (2026-09-15)
+
+A second word: an event named exactly **Bookable staff** marks hours the person keeps for
+colleagues. They are offered only when the call comes from a number on the calendar's **staff
+list** (name + phone per row, kept on the calendar as `StaffCallersJson`, edited under *Staff
+callers* on the row). Who counts as staff is the number the call comes from — caller ID, passed by
+Docurest as `callerPhone` on the slots and book requests — never the number a caller reads out,
+which anybody could read out. Numbers match with or without the country code (the shorter form
+must be at least nine digits and the tail of the longer); a withheld or unknown caller ID sees
+public hours only, as does any booking from the website or chat. Both kinds of window are mirrored
+whether marked Free or Busy, and both behave the same otherwise: while any exist, the working week
+is ignored; meetings and appointments inside them still block.

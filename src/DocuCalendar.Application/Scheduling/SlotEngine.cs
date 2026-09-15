@@ -50,15 +50,23 @@ public static class SlotEngine
         int? requestedMinutes = null,
         int maxResults = DefaultMaxResults,
         DateOnly? fromLocalDate = null,
-        int maxPerDay = 0)
+        int maxPerDay = 0,
+        IEnumerable<Interval>? windows = null)
     {
         var duration = ClampDuration(rules, requestedMinutes);
         var step = Math.Max(1, rules.SlotMinutes);
         var horizon = Math.Clamp(days, 1, Math.Max(1, rules.HorizonDays));
         var earliest = nowUtc.AddMinutes(Math.Max(0, rules.MinLeadMinutes));
 
+        // "Bookable" events from the person's own calendar. While any exist, they ARE the
+        // availability: the working week is not consulted at all (a rector who marks 10–11 wants
+        // nothing offered at 9, and a day he did not mark is closed). Without them, the working
+        // week applies as ever.
+        var bookable = windows?.Where(w => w.End > w.Start).OrderBy(w => w.Start).ToList();
+        var useWindows = bookable is { Count: > 0 };
+
         var week = ParseWeek(rules.WeeklyAvailabilityJson);
-        if (week.Count == 0) return Array.Empty<Slot>();
+        if (week.Count == 0 && !useWindows) return Array.Empty<Slot>();
 
         // Pad once, up front: a buffer is a property of the blocked time, not of every comparison.
         var blocked = busy
@@ -76,19 +84,42 @@ public static class SlotEngine
         for (var d = 0; d < horizon && results.Count < maxResults; d++)
         {
             var date = startLocalDate.AddDays(d);
-            if (!week.TryGetValue(date.DayOfWeek, out var windows)) continue;
+
+            // The day's windows, in UTC: either the person's Bookable events clipped to this local
+            // day (a window over midnight contributes its part of each day), or the working week.
+            var dayWindows = new List<(DateTimeOffset StartUtc, DateTimeOffset EndUtc)>();
+            if (useWindows)
+            {
+                if (!TryToUtc(date, TimeOnly.MinValue, zone, out var dayStartUtc)) continue;
+                if (!TryToUtc(date.AddDays(1), TimeOnly.MinValue, zone, out var dayEndUtc)) continue;
+                foreach (var w in bookable!)
+                {
+                    var s = w.Start > dayStartUtc ? w.Start : dayStartUtc;
+                    var e = w.End < dayEndUtc ? w.End : dayEndUtc;
+                    if (e > s) dayWindows.Add((s, e));
+                }
+            }
+            else
+            {
+                if (!week.TryGetValue(date.DayOfWeek, out var weekWindows)) continue;
+                foreach (var (winStart, winEnd) in weekWindows)
+                {
+                    if (winEnd <= winStart) continue; // an overnight window is not expressible here, by design
+                    if (!TryToUtc(date, winStart, zone, out var windowStartUtc)) continue;
+                    if (!TryToUtc(date, winEnd, zone, out var windowEndUtc)) continue;
+                    dayWindows.Add((windowStartUtc, windowEndUtc));
+                }
+            }
+            if (dayWindows.Count == 0) continue;
+
             // A per-day cap spreads a bounded answer across days instead of exhausting it on the
             // first one: sixty 20-minute slots are three days, and a phone assistant that only
             // ever sees those tells every caller "only Wednesday".
             var onThisDay = 0;
 
-            foreach (var (winStart, winEnd) in windows)
+            foreach (var (windowStartUtc, windowEndUtc) in dayWindows)
             {
                 if (results.Count >= maxResults) break;
-                if (winEnd <= winStart) continue; // an overnight window is not expressible here, by design
-
-                if (!TryToUtc(date, winStart, zone, out var windowStartUtc)) continue;
-                if (!TryToUtc(date, winEnd, zone, out var windowEndUtc)) continue;
 
                 for (var t = windowStartUtc; t.AddMinutes(duration) <= windowEndUtc; t = t.AddMinutes(step))
                 {
@@ -117,7 +148,8 @@ public static class SlotEngine
         IEnumerable<Interval> busy,
         DateTimeOffset nowUtc,
         DateTimeOffset startUtc,
-        int minutes)
+        int minutes,
+        IEnumerable<Interval>? windows = null)
     {
         if (ClampDuration(rules, minutes) != minutes) return false;
 
@@ -128,7 +160,7 @@ public static class SlotEngine
         var dayOffset = (int)(localDay - todayLocal).TotalDays;
         if (dayOffset < 0 || dayOffset >= Math.Max(1, rules.HorizonDays)) return false;
 
-        var slots = GetSlots(rules, zone, busy, nowUtc, dayOffset + 1, minutes, maxResults: int.MaxValue);
+        var slots = GetSlots(rules, zone, busy, nowUtc, dayOffset + 1, minutes, maxResults: int.MaxValue, windows: windows);
         return slots.Any(s => s.StartsAtUtc == startUtc);
     }
 

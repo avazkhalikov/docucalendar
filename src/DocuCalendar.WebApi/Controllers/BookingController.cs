@@ -45,6 +45,7 @@ public sealed class BookingController : ControllerBase
         [FromQuery] int? minutes = null,
         [FromQuery] DateOnly? from = null,
         [FromQuery] int perDay = 0,
+        [FromQuery] string? callerPhone = null,
         CancellationToken ct = default)
     {
         var tenant = HttpContext.Tenant();
@@ -61,7 +62,9 @@ public sealed class BookingController : ControllerBase
         if (calendar == null)
             return Ok(new { noCalendar = true, message = "No calendar is set up for this context." });
 
-        var slots = await _booking.GetSlotsAsync(tenant, calendar, days, minutes, ct, from: from, perDay: Math.Clamp(perDay, 0, 50));
+        // The number the call came from decides whether "Bookable staff" hours are shown; a
+        // website visitor has none and sees public hours only.
+        var slots = await _booking.GetSlotsAsync(tenant, calendar, days, minutes, ct, from: from, perDay: Math.Clamp(perDay, 0, 50), callerPhone: callerPhone);
         // The calendar's own way of taking appointments travels with its times, so the assistant
         // adapts even when the caller named a person whose script differs from the line's default.
         var script = Application.Scheduling.BookingScript.Parse(calendar.BookingScriptJson);
@@ -94,7 +97,8 @@ public sealed class BookingController : ControllerBase
             tenant, calendar, body.StartsAtUtc, body.Minutes,
             body.VisitorName ?? string.Empty, body.VisitorPhone ?? string.Empty,
             body.Topic, string.IsNullOrWhiteSpace(body.Channel) ? "chat" : body.Channel!, body.SourceRef,
-            body.ServiceName, BookingService.AnswersToJson(body.Answers?.Select(a => (a.Question, a.Answer))), ct);
+            body.ServiceName, BookingService.AnswersToJson(body.Answers?.Select(a => (a.Question, a.Answer))), ct,
+            callerPhone: body.CallerPhone);
 
         if (!outcome.Success)
         {
@@ -166,6 +170,8 @@ public sealed class BookingController : ControllerBase
         public string? ServiceName { get; set; }
         /// <summary>The caller's answers to the calendar's intake questions.</summary>
         public List<AnswerDto>? Answers { get; set; }
+        /// <summary>The number the call came from (caller ID), not the number the caller gave: it unlocks "Bookable staff" hours.</summary>
+        public string? CallerPhone { get; set; }
     }
 
     public sealed class AnswerDto

@@ -299,4 +299,60 @@ public class SlotEngineTests
         Assert.NotEmpty(slots);
         Assert.Equal(new DateTime(2026, 9, 10), TimeZoneInfo.ConvertTime(slots[0].StartsAtUtc, Tashkent).Date);
     }
+
+    // ---- "Bookable" windows from the person's own calendar ----
+
+    [Fact]
+    public void BookableWindowsReplaceTheWorkingWeek()
+    {
+        // The rector marked 10–11 and 16–18. Nothing at 9, even though the week says 9–13.
+        var windows = new[] { new Interval(Local(2026, 9, 10, 10), Local(2026, 9, 10, 11)), new Interval(Local(2026, 9, 10, 16), Local(2026, 9, 10, 18)) };
+
+        var slots = SlotEngine.GetSlots(Rules(slot: 30), Tashkent, Array.Empty<Interval>(), EarlyThursday, days: 1, windows: windows);
+
+        Assert.Equal(new[] { Local(2026, 9, 10, 10), Local(2026, 9, 10, 10, 30), Local(2026, 9, 10, 16), Local(2026, 9, 10, 16, 30), Local(2026, 9, 10, 17), Local(2026, 9, 10, 17, 30) },
+            slots.Select(s => s.StartsAtUtc));
+    }
+
+    [Fact]
+    public void AWindowOutsideTheWorkingWeekIsOffered()
+    {
+        // Saturday is "not bookable" in the week, but a Bookable event on Saturday says otherwise.
+        var saturday = new[] { new Interval(Local(2026, 9, 12, 10), Local(2026, 9, 12, 12)) };
+
+        var slots = SlotEngine.GetSlots(Rules(slot: 60), Tashkent, Array.Empty<Interval>(), EarlyThursday, days: 3, windows: saturday);
+
+        Assert.Equal(new[] { Local(2026, 9, 12, 10), Local(2026, 9, 12, 11) }, slots.Select(s => s.StartsAtUtc));
+    }
+
+    [Fact]
+    public void ARealMeetingInsideAWindowStillBlocksIt()
+    {
+        var windows = new[] { new Interval(Local(2026, 9, 10, 9), Local(2026, 9, 10, 11)) };
+        var busy = new[] { new Interval(Local(2026, 9, 10, 9), Local(2026, 9, 10, 10)) };
+
+        var slots = SlotEngine.GetSlots(Rules(slot: 30), Tashkent, busy, EarlyThursday, days: 1, windows: windows);
+
+        Assert.Equal(new[] { Local(2026, 9, 10, 10), Local(2026, 9, 10, 10, 30) }, slots.Select(s => s.StartsAtUtc));
+    }
+
+    [Fact]
+    public void DaysWithoutAWindowOfferNothing_WhileWindowsExist()
+    {
+        // Thursday has a window; Friday has none — Friday is closed, not "back to the week".
+        var windows = new[] { new Interval(Local(2026, 9, 10, 10), Local(2026, 9, 10, 11)) };
+
+        var slots = SlotEngine.GetSlots(Rules(slot: 30), Tashkent, Array.Empty<Interval>(), EarlyThursday, days: 2, windows: windows);
+
+        Assert.All(slots, s => Assert.Equal(new DateTime(2026, 9, 10), TimeZoneInfo.ConvertTime(s.StartsAtUtc, Tashkent).Date));
+    }
+
+    [Fact]
+    public void ABookedWindowSlotIsOfferable_AndOneOutsideIsNot()
+    {
+        var windows = new[] { new Interval(Local(2026, 9, 10, 10), Local(2026, 9, 10, 11)) };
+
+        Assert.True(SlotEngine.IsOfferable(Rules(slot: 30), Tashkent, Array.Empty<Interval>(), EarlyThursday, Local(2026, 9, 10, 10, 30), 30, windows));
+        Assert.False(SlotEngine.IsOfferable(Rules(slot: 30), Tashkent, Array.Empty<Interval>(), EarlyThursday, Local(2026, 9, 10, 9), 30, windows));
+    }
 }
