@@ -135,9 +135,9 @@ export default function CalendarsPage({ me }: { me: Me }) {
         </div>
       )}
 
-      {me.role === 'owner' && (
-        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#101016] p-4">
-          <h2 className="text-sm font-medium mb-2">Add a calendar</h2>
+      {/* Everyone may add their own calendar; only the owner may add one for somebody else. */}
+      <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#101016] p-4">
+          <h2 className="text-sm font-medium mb-2">{me.role === 'owner' ? 'Add a calendar' : 'Add your calendar'}</h2>
           <div className="flex flex-wrap items-end gap-2">
             <div className="flex-1 min-w-[16rem]">
               <label className="block text-[11px] text-slate-500 dark:text-slate-400 mb-1">Label</label>
@@ -148,6 +148,7 @@ export default function CalendarsPage({ me }: { me: Me }) {
                 className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#0b0b0f] border border-slate-300 dark:border-slate-700 text-sm"
               />
             </div>
+            {me.role === 'owner' && (
             <div className="min-w-[16rem]">
               <label className="block text-[11px] text-slate-500 dark:text-slate-400 mb-1">Whose calendar is it?</label>
               <select
@@ -165,6 +166,7 @@ export default function CalendarsPage({ me }: { me: Me }) {
                   ))}
               </select>
             </div>
+            )}
             <button
               type="button"
               onClick={create}
@@ -176,12 +178,13 @@ export default function CalendarsPage({ me }: { me: Me }) {
           </div>
           <p className="mt-2 text-[11px] text-slate-400 flex items-start gap-1">
             <Info className="w-3.5 h-3.5 mt-px shrink-0" />
-            {people.length > 1
-              ? 'Whoever it belongs to can edit it and set their own hours; you can edit every calendar on the account.'
-              : 'Your team appears here automatically — open this site from your assistant dashboard once and the list arrives.'}
+            {me.role !== 'owner'
+              ? 'It will be yours: connect your Google or Outlook to it, set your hours, and the assistant can book you.'
+              : people.length > 1
+                ? 'Whoever it belongs to can edit it and set their own hours; you can edit every calendar on the account.'
+                : 'Your team appears here automatically — open this site from your assistant dashboard once and the list arrives.'}
           </p>
         </div>
-      )}
 
       {loading ? (
         <div className="py-10 flex justify-center text-slate-400"><Loader2 className="w-5 h-5 animate-spin" /></div>
@@ -190,7 +193,7 @@ export default function CalendarsPage({ me }: { me: Me }) {
         // than left to be discovered in the menu.
         <div className="rounded-xl border border-dashed border-slate-300 dark:border-slate-700 py-10 px-6 text-center">
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            No calendars yet.{me.role === 'owner' ? ' Create the first one above.' : ' Ask the account owner to set one up for you.'}
+            No calendars yet.{me.role === 'owner' ? ' Create the first one above.' : ' Add yours above.'}
           </p>
           <Link
             to="/guide"

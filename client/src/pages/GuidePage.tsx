@@ -44,8 +44,9 @@ export default function GuidePage() {
             the right diary.
           </p>
           <p className="mt-2 text-slate-500 dark:text-slate-400">
-            Only the account owner creates them. Pick whose calendar it is from the list — your team
-            appears there by itself once this site has been opened from your assistant dashboard.
+            Anyone can add their own calendar. Only the account owner adds one for somebody else,
+            picking whose it is from the list — your team appears there by itself once this site has
+            been opened from your assistant dashboard.
           </p>
         </Step>
 

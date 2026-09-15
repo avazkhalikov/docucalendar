@@ -63,15 +63,17 @@ public sealed class CalendarsController : StaffControllerBase
     }
 
     /// <summary>
-    /// Creating a calendar for a staff member is the owner's job — "set up calendars for all
-    /// staff" is one screen, and an operator minting calendars for other people is not a thing
-    /// this product needs.
+    /// Anyone may create their own calendar — an operator connecting their Outlook should not
+    /// have to ask the owner to make a calendar for them first. Creating one for SOMEBODY ELSE
+    /// is the owner's job: "set up calendars for all staff" is one screen, and an operator
+    /// minting calendars for other people is not a thing this product needs.
     /// </summary>
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CalendarRequest body, CancellationToken ct)
     {
-        if (!IsOwner) return StatusCode(StatusCodes.Status403Forbidden,
-            new { message = "Only the account owner can create calendars." });
+        if (!IsOwner && body.OwnerUserId is { } someoneElse && someoneElse != UserId)
+            return StatusCode(StatusCodes.Status403Forbidden,
+                new { message = "Only the account owner can create calendars for other people." });
         if (string.IsNullOrWhiteSpace(body.Label))
             return BadRequest(new { message = "A label is required — it is what a caller will ask for." });
 
