@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Loader2, Plus, Save, CalendarClock, Archive, ChevronDown, ChevronRight, Info, BookOpen,
   RefreshCw, Unlink, AlertTriangle, CheckCircle2, Link2, Star,
+  Trash2,
 } from 'lucide-react';
 import {
   api, connectUrl, embedded, type CalendarRow, type Me, type Person, type SyncConnection, type SyncProvider, type SyncProviderKey,
@@ -212,7 +213,6 @@ export default function CalendarsPage({ me }: { me: Me }) {
               onToggle={() => setOpen(open === row.id ? null : row.id)}
               onSaved={load}
               onError={setError}
-              isOwner={me.role === 'owner'}
               ownerName={people.find((p) => p.userId === row.ownerUserId)?.name}
               providers={providers}
               connection={connections.find((c) => c.calendarId === row.id)}
@@ -231,7 +231,6 @@ function CalendarCard({
   onToggle,
   onSaved,
   onError,
-  isOwner,
   ownerName,
   providers,
   connection,
@@ -242,7 +241,6 @@ function CalendarCard({
   onToggle: () => void;
   onSaved: () => Promise<void>;
   onError: (message: string) => void;
-  isOwner: boolean;
   ownerName?: string;
   providers: SyncProvider[];
   connection?: SyncConnection;
@@ -281,13 +279,18 @@ function CalendarCard({
     }
   };
 
-  const retire = async () => {
-    if (!window.confirm(`Retire "${row.label}"? Existing appointments stay, but nothing new can be booked.`)) return;
+  // A calendar nothing was ever booked in is deleted outright; one with appointments is retired,
+  // because those appointments keep it as their home.
+  const remove = async () => {
+    const question = row.hasAppointments
+      ? `Retire "${row.label}"? Existing appointments stay, but nothing new can be booked.`
+      : `Delete "${row.label}"? Nothing was ever booked in it, so it disappears for good, and any link to your real calendar is undone.`;
+    if (!window.confirm(question)) return;
     try {
-      await api.deactivateCalendar(row.id);
+      await api.removeCalendar(row.id);
       await onSaved();
     } catch (e) {
-      onError(e instanceof Error ? e.message : 'Could not retire the calendar.');
+      onError(e instanceof Error ? e.message : 'Could not remove the calendar.');
     }
   };
 
@@ -347,9 +350,14 @@ function CalendarCard({
           >
             <CalendarClock className="w-4 h-4" /> Schedule
           </Link>
-          {isOwner && row.active && (
-            <button type="button" onClick={retire} className="text-slate-400 hover:text-red-500" title="Retire this calendar">
-              <Archive className="w-4 h-4" />
+          {row.canEdit && (row.active || !row.hasAppointments) && (
+            <button
+              type="button"
+              onClick={remove}
+              className="text-slate-400 hover:text-red-500"
+              title={row.hasAppointments ? 'Retire this calendar' : 'Delete this calendar'}
+            >
+              {row.hasAppointments ? <Archive className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
             </button>
           )}
         </div>

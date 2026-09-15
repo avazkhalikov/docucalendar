@@ -20,6 +20,8 @@ export interface CalendarRow {
   ownerUserId: string;
   mine: boolean;
   canEdit: boolean;
+  /** True once anything was ever booked here: removing it then retires rather than deletes. */
+  hasAppointments: boolean;
   slotMinutes: number;
   maxMinutes: number;
   bufferMinutes: number;
@@ -231,8 +233,9 @@ export const api = {
     call<{ id: string }>('/calendars', { method: 'POST', body: JSON.stringify(body) }),
   updateCalendar: (id: string, body: Record<string, unknown>) =>
     call<{ saved: boolean }>(`/calendars/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  deactivateCalendar: (id: string) =>
-    call<{ deactivated: boolean }>(`/calendars/${id}`, { method: 'DELETE' }),
+  /** Deletes a calendar nothing was ever booked in; retires one that has appointments. */
+  removeCalendar: (id: string) =>
+    call<{ deleted?: boolean; retired?: boolean }>(`/calendars/${id}`, { method: 'DELETE' }),
   makeDefaultCalendar: (id: string) =>
     call<{ saved: boolean; routesMoved: number }>(`/calendars/${id}/default`, { method: 'PUT' }),
   setContextDefault: (body: { tenantContextId: string | null; calendarId: string | null }) =>

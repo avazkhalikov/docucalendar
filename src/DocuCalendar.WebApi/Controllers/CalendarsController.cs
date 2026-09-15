@@ -1,6 +1,8 @@
 using DocuCalendar.Application.Scheduling;
+using DocuCalendar.Application.Sync;
 using DocuCalendar.Domain.Entities;
 using DocuCalendar.Infrastructure.Data;
+using DocuCalendar.Infrastructure.Services.Sync;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,11 +17,19 @@ namespace DocuCalendar.WebApi.Controllers;
 public sealed class CalendarsController : StaffControllerBase
 {
     private readonly CalendarDbContext _db;
+    private readonly IEnumerable<ICalendarProvider> _providers;
+    private readonly TokenVault _vault;
     private readonly ILogger<CalendarsController> _logger;
 
-    public CalendarsController(CalendarDbContext db, ILogger<CalendarsController> logger)
+    public CalendarsController(
+        CalendarDbContext db,
+        IEnumerable<ICalendarProvider> providers,
+        TokenVault vault,
+        ILogger<CalendarsController> logger)
     {
         _db = db;
+        _providers = providers;
+        _vault = vault;
         _logger = logger;
     }
 
@@ -37,6 +47,14 @@ public sealed class CalendarsController : StaffControllerBase
             .Where(d => d.TenantId == TenantId)
             .ToListAsync(ct);
 
+        // Whether removing a calendar would delete it or merely retire it — the page says which
+        // before anybody clicks, rather than surprising them afterwards.
+        var withAppointments = (await _db.Appointments.AsNoTracking()
+            .Where(a => a.TenantId == TenantId)
+            .Select(a => a.CalendarId)
+            .Distinct()
+            .ToListAsync(ct)).ToHashSet();
+
         return Ok(new
         {
             canManageAll = IsOwner,
@@ -48,6 +66,7 @@ public sealed class CalendarsController : StaffControllerBase
                 ownerUserId = c.OwnerUserId,
                 mine = c.OwnerUserId == UserId,
                 canEdit = CanManage(c),
+                hasAppointments = withAppointments.Contains(c.Id),
                 c.SlotMinutes,
                 c.MaxMinutes,
                 c.BufferMinutes,
@@ -162,24 +181,27 @@ public sealed class CalendarsController : StaffControllerBase
         return Ok(new { saved = true });
     }
 
-    /// <summary>Deactivates rather than deletes: appointments already made must keep their home.</summary>
+    /// <summary>
+    /// Removes a calendar. One with appointments is retired, not deleted — those appointments must
+    /// keep their home, and the row stays greyed out as the record of it. One with NO appointments
+    /// has nothing to keep: it is deleted outright, together with its provider link and mirrored
+    /// busy time, because a mislabelled calendar added a minute ago is the common case and a
+    /// permanent grey row for it is clutter, not history. Whoever may edit the calendar may remove
+    /// it: an operator their own, the owner anybody's.
+    /// </summary>
     [HttpDelete("{id:guid}")]
-    public async Task<IActionResult> Deactivate(Guid id, CancellationToken ct)
+    public async Task<IActionResult> Remove(Guid id, CancellationToken ct)
     {
-        if (!IsOwner) return StatusCode(StatusCodes.Status403Forbidden,
-            new { message = "Only the account owner can retire a calendar." });
-
         var calendar = await _db.Calendars.FirstOrDefaultAsync(c => c.Id == id && c.TenantId == TenantId, ct);
         if (calendar == null) return NotFound();
+        if (!CanManage(calendar)) return NotYours();
 
-        calendar.Active = false;
-        calendar.UpdatedAt = DateTimeOffset.UtcNow;
-        // A retired calendar must stop being a booking target, or the AI keeps sending people to it.
+        // Either way it must stop being a booking target, or the AI keeps sending people to it.
         var defaults = await _db.ContextDefaults.Where(d => d.TenantId == TenantId && d.CalendarId == id).ToListAsync(ct);
         _db.ContextDefaults.RemoveRange(defaults);
 
-        // Retiring somebody's default hands the star to their oldest remaining calendar, so the
-        // person is never left without one.
+        // And either way, losing somebody's default hands the star to their oldest remaining
+        // calendar, so the person is never left without one.
         if (calendar.IsDefault)
         {
             calendar.IsDefault = false;
@@ -190,8 +212,38 @@ public sealed class CalendarsController : StaffControllerBase
             if (heir != null) heir.IsDefault = true;
         }
 
+        var hasAppointments = await _db.Appointments.AnyAsync(a => a.CalendarId == id, ct);
+        if (hasAppointments)
+        {
+            calendar.Active = false;
+            calendar.UpdatedAt = DateTimeOffset.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            _logger.LogInformation("[Calendars] {Tenant}: \"{Label}\" retired by {User}.", TenantId, calendar.Label, DisplayName);
+            return Ok(new { retired = true });
+        }
+
+        // Nothing booked, so nothing to preserve. Let go of the person's real calendar first: the
+        // refresh token is revoked at the provider (best effort — a provider outage must not keep
+        // a calendar that its owner asked to delete), then the link and the mirrored busy time go.
+        var connection = await _db.ExternalConnections.FirstOrDefaultAsync(c => c.CalendarId == id, ct);
+        if (connection != null)
+        {
+            var refresh = _vault.Unprotect(connection.RefreshTokenProtected);
+            var provider = _providers.FirstOrDefault(p => string.Equals(p.Key, connection.Provider, StringComparison.OrdinalIgnoreCase));
+            if (refresh != null && provider != null)
+            {
+                try { await provider.RevokeAsync(refresh, ct); }
+                catch (Exception ex) { _logger.LogWarning(ex, "[Calendars] {Tenant}: could not revoke the {Provider} token of \"{Label}\" on delete.", TenantId, connection.Provider, calendar.Label); }
+            }
+            _db.ExternalConnections.Remove(connection);
+        }
+        var blocks = await _db.BusyBlocks.Where(b => b.CalendarId == id).ToListAsync(ct);
+        _db.BusyBlocks.RemoveRange(blocks);
+        _db.Calendars.Remove(calendar);
+
         await _db.SaveChangesAsync(ct);
-        return Ok(new { deactivated = true });
+        _logger.LogInformation("[Calendars] {Tenant}: \"{Label}\" deleted by {User} (no appointments).", TenantId, calendar.Label, DisplayName);
+        return Ok(new { deleted = true });
     }
 
     /// <summary>
