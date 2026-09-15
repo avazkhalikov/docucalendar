@@ -17,8 +17,11 @@ export default function BookingScriptEditor({
   onChange: (next: BookingScript) => void;
 }) {
   const set = (patch: Partial<BookingScript>) => onChange({ ...value, ...patch });
-  const input =
-    'w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#0b0b0f] border border-slate-300 dark:border-slate-700 text-sm disabled:opacity-60';
+  // No width here: each row decides who grows. (A shared w-full on both inputs of the service
+  // row let the minutes box win the whole line and squeezed the name to a sliver.)
+  const field =
+    'px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#0b0b0f] border border-slate-300 dark:border-slate-700 text-sm disabled:opacity-60';
+  const input = `${field} w-full`;
 
   return (
     <div className="space-y-4">
@@ -90,10 +93,10 @@ export default function BookingScriptEditor({
               <input
                 value={s.name}
                 disabled={disabled}
-                placeholder="Service name (what a caller would say)"
+                placeholder="Service name — what a caller would ask for, e.g. Filling"
                 maxLength={80}
                 onChange={(e) => set({ services: value.services.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)) })}
-                className={input}
+                className={`${field} flex-1 min-w-0`}
               />
               <input
                 type="number"
@@ -104,7 +107,7 @@ export default function BookingScriptEditor({
                 disabled={disabled}
                 placeholder="min"
                 onChange={(e) => set({ services: value.services.map((x, j) => (j === i ? { ...x, minutes: Number(e.target.value) || 0 } : x)) })}
-                className={`${input} w-24 shrink-0 tabular-nums`}
+                className={`${field} w-24 shrink-0 tabular-nums`}
               />
               <span className="text-[11px] text-slate-400 shrink-0">min</span>
               {!disabled && (
@@ -140,7 +143,7 @@ export default function BookingScriptEditor({
           disabled={disabled}
           maxLength={1500}
           rows={3}
-          placeholder="In your own words. “If the caller is in pain now, tell them to come straight in and do not book.” “Ask whether they have been here before.” “We do not book on the day — offer tomorrow onwards.”"
+          placeholder="Optional — in your own words, e.g. “We do not book on the day; offer tomorrow onwards.”"
           onChange={(e) => set({ instructions: e.target.value })}
           className={input}
         />
