@@ -46,7 +46,16 @@ public sealed class BookingController : ControllerBase
         CancellationToken ct = default)
     {
         var tenant = HttpContext.Tenant();
-        var calendar = await _calendars.ResolveAsync(tenant.TenantId, contextId, calendarHint, ct);
+        var resolved = await _calendars.ResolveAsync(tenant.TenantId, contextId, calendarHint, ct);
+        if (resolved.UnknownStaff)
+        {
+            // Not a fallback to the default: the caller asked for somebody who does not take
+            // appointments here, and the assistant must say so rather than book them elsewhere.
+            _logger.LogInformation("[Booking] {Tenant}: nobody called \"{Hint}\" has a calendar; bookable: {Labels}.",
+                tenant.TenantId, calendarHint, string.Join(", ", resolved.BookableLabels));
+            return Ok(new { unknownStaff = true, requested = calendarHint, bookable = resolved.BookableLabels });
+        }
+        var calendar = resolved.Calendar;
         if (calendar == null)
             return Ok(new { noCalendar = true, message = "No calendar is set up for this context." });
 

@@ -41,6 +41,24 @@ Two paths, because a caller may ask for a person whose calendar differs from the
 Both phone brains declare the two new tool parameters — `service` (string) and `answers` (array
 of `{question, answer}`) — with the same shapes, uppercase types for Gemini as ever.
 
+## Only people with calendars can be booked
+
+Seen live the day this shipped: a caller asked for a lecturer whose name the assistant had read in
+the knowledge base. The slots tool found no calendar with that label, **fell back to the line's
+default calendar**, and the assistant announced a meeting with the lecturer — an appointment in
+the owner's diary that the lecturer would never know about.
+
+The fallback is gone. `CalendarService.ResolveAsync` returns a `Resolution`: a named hint that
+matches nothing is `UnknownStaff`, and `GET /api/booking/slots` answers
+`{ unknownStaff, requested, bookable: [labels] }` instead of times. On the phone side that becomes
+`DescribeUnknownStaff`: *nobody of that name takes appointments here, you cannot book with them
+or promise to email them, these are the people who can be booked — ask the caller whether one of
+them will do.* The prompt's booking rule says the same up front: a name or an email address in the
+documents is not a calendar, and the assistant cannot send email to anyone.
+
+Hints with no name at all (a plain "I'd like an appointment") still go to the context's default
+calendar, as before.
+
 ## Pure code, tested
 
 `DocuCalendar.Application.Scheduling.BookingScript`: `Parse` never throws (an unreadable script

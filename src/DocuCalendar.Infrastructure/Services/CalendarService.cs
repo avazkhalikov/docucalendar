@@ -15,23 +15,38 @@ public sealed class CalendarService
     public CalendarService(CalendarDbContext db) => _db = db;
 
     /// <summary>
+    /// What a booking request resolved to. <see cref="Calendar"/> is where a booking would go;
+    /// <see cref="UnknownStaff"/> says the visitor asked for somebody by name and nobody of that
+    /// name takes appointments here — in which case the calendar is deliberately NOT the default.
+    /// Booking a caller who asked for "Professor Karimov" into the owner's diary and calling it
+    /// a meeting with the professor is worse than declining: it is a promise nobody will keep.
+    /// </summary>
+    public sealed record Resolution(StaffCalendar? Calendar, bool UnknownStaff, IReadOnlyList<string> BookableLabels);
+
+    /// <summary>
     /// Resolution order, most specific first:
     /// 1. the visitor named someone ("the admissions officer") and a calendar label matches;
-    /// 2. the context's own default;
-    /// 3. the account-wide fallback.
-    /// Null when nothing resolves — which is exactly when the AI must not offer booking at all.
+    /// 2. the visitor named someone and NOTHING matches → refused, with who can be booked instead;
+    /// 3. the context's own default;
+    /// 4. the account-wide fallback.
+    /// A null calendar with no unknown-staff flag means nothing is set up — exactly when the AI
+    /// must not offer booking at all.
     /// </summary>
-    public async Task<StaffCalendar?> ResolveAsync(string tenantId, Guid? contextId, string? hint, CancellationToken ct)
+    public async Task<Resolution> ResolveAsync(string tenantId, Guid? contextId, string? hint, CancellationToken ct)
     {
         var active = await _db.Calendars.AsNoTracking()
             .Where(c => c.TenantId == tenantId && c.Active)
             .ToListAsync(ct);
-        if (active.Count == 0) return null;
+        var labels = active.OrderBy(c => c.Label).Select(c => c.Label).ToList();
+        if (active.Count == 0) return new Resolution(null, false, labels);
 
         if (!string.IsNullOrWhiteSpace(hint))
         {
             var matched = MatchByLabel(active, hint!);
-            if (matched != null) return matched;
+            if (matched != null) return new Resolution(matched, false, labels);
+            // Only people and desks with calendars here can be booked. A name from a document,
+            // an email address, a lecturer the caller once met — none of those is a calendar.
+            return new Resolution(null, true, labels);
         }
 
         var defaults = await _db.ContextDefaults.AsNoTracking()
@@ -44,7 +59,7 @@ public sealed class CalendarService
         var fallback = defaults.FirstOrDefault(d => d.TenantContextId == null);
 
         var chosen = forContext ?? fallback;
-        return chosen == null ? null : active.FirstOrDefault(c => c.Id == chosen.CalendarId);
+        return new Resolution(chosen == null ? null : active.FirstOrDefault(c => c.Id == chosen.CalendarId), false, labels);
     }
 
     /// <summary>
