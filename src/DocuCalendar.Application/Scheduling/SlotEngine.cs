@@ -48,7 +48,9 @@ public static class SlotEngine
         DateTimeOffset nowUtc,
         int days,
         int? requestedMinutes = null,
-        int maxResults = DefaultMaxResults)
+        int maxResults = DefaultMaxResults,
+        DateOnly? fromLocalDate = null,
+        int maxPerDay = 0)
     {
         var duration = ClampDuration(rules, requestedMinutes);
         var step = Math.Max(1, rules.SlotMinutes);
@@ -66,12 +68,19 @@ public static class SlotEngine
             .ToList();
 
         var results = new List<Slot>();
-        var startLocalDate = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(nowUtc, zone).DateTime);
+        // A caller may ask for a particular day ("next Tuesday"): the window then starts there,
+        // and the lead-time rule still applies, so a day already in the past yields nothing.
+        var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(nowUtc, zone).DateTime);
+        var startLocalDate = fromLocalDate is { } from && from > today ? from : today;
 
         for (var d = 0; d < horizon && results.Count < maxResults; d++)
         {
             var date = startLocalDate.AddDays(d);
             if (!week.TryGetValue(date.DayOfWeek, out var windows)) continue;
+            // A per-day cap spreads a bounded answer across days instead of exhausting it on the
+            // first one: sixty 20-minute slots are three days, and a phone assistant that only
+            // ever sees those tells every caller "only Wednesday".
+            var onThisDay = 0;
 
             foreach (var (winStart, winEnd) in windows)
             {
@@ -87,7 +96,9 @@ public static class SlotEngine
                     var end = t.AddMinutes(duration);
                     if (t < earliest) continue;
                     if (OverlapsAny(t, end, blocked)) continue;
+                    if (maxPerDay > 0 && onThisDay >= maxPerDay) break;
                     results.Add(new Slot(t, end, FormatLocal(t, zone)));
+                    onThisDay++;
                 }
             }
         }

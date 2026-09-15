@@ -80,7 +80,7 @@ public sealed class CalendarService
             var label = Normalise(c.Label);
             return label.Contains(needle, StringComparison.Ordinal) || needle.Contains(label, StringComparison.Ordinal);
         }).ToList();
-        if (contains.Count > 0) return Choose(contains, needle);
+        if (contains.Count > 0) return Choose(WithNameSiblings(contains, calendars), needle);
 
         // Word overlap: "admissions officer" finds "Aziza — Admissions".
         var words = needle.Split(' ', StringSplitOptions.RemoveEmptyEntries)
@@ -92,7 +92,32 @@ public sealed class CalendarService
             var label = Normalise(c.Label);
             return words.Any(w => label.Contains(w, StringComparison.Ordinal));
         }).ToList();
-        return Choose(byWord, needle);
+        return Choose(WithNameSiblings(byWord, calendars), needle);
+    }
+
+    /// <summary>
+    /// Adds the other calendars of the same person whose label is a variant of a matched one:
+    /// "Avaz Khalikov" string-matches only "Avaz", but "Avaz Outlook" is the same diary and may be
+    /// the starred one. Seen live: the full name booked the un-starred Google calendar because
+    /// only the bare "Avaz" label survived the substring test and a single match is honoured as
+    /// named. Siblings whose labels do NOT contain each other are left alone — the owner's
+    /// "Admissions" desk is not a variant of their personal diary.
+    /// </summary>
+    private static List<StaffCalendar> WithNameSiblings(List<StaffCalendar> matched, IReadOnlyList<StaffCalendar> all)
+    {
+        var result = new List<StaffCalendar>(matched);
+        foreach (var m in matched)
+        {
+            var label = Normalise(m.Label);
+            foreach (var c in all)
+            {
+                if (c.OwnerUserId != m.OwnerUserId || result.Contains(c)) continue;
+                var other = Normalise(c.Label);
+                if (other.Contains(label, StringComparison.Ordinal) || label.Contains(other, StringComparison.Ordinal))
+                    result.Add(c);
+            }
+        }
+        return result;
     }
 
     /// <summary>

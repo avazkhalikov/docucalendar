@@ -47,12 +47,12 @@ public sealed class BookingService
     /// </summary>
     public async Task<IReadOnlyList<Slot>> GetSlotsAsync(
         TenantRegistration tenant, StaffCalendar calendar, int days, int? minutes, CancellationToken ct,
-        int maxResults = SlotEngine.DefaultMaxResults)
+        int maxResults = SlotEngine.DefaultMaxResults, DateOnly? from = null, int perDay = 0)
     {
         var zone = TenantService.ZoneOf(tenant);
         var now = DateTimeOffset.UtcNow;
         var busy = await LoadBusyAsync(calendar.Id, now.AddDays(-1), now.AddDays(calendar.HorizonDays + 1), ct);
-        return SlotEngine.GetSlots(RulesOf(calendar), zone, busy, now, days, minutes, maxResults);
+        return SlotEngine.GetSlots(RulesOf(calendar), zone, busy, now, days, minutes, maxResults, from, perDay);
     }
 
     /// <summary>

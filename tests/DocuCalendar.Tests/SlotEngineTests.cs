@@ -266,4 +266,37 @@ public class SlotEngineTests
         }
         return null;
     }
+
+    [Fact]
+    public void APerDayCapSpreadsTheAnswerAcrossDays()
+    {
+        // Sixty 20-minute slots are three office days; a phone assistant that only ever sees the
+        // first six tells every caller "only Wednesday". Capped per day, the same budget reaches
+        // a week ahead.
+        var slots = SlotEngine.GetSlots(Rules(), Tashkent, Array.Empty<Interval>(), EarlyThursday, days: 7, maxResults: 20, maxPerDay: 4);
+
+        var days = slots.Select(s => TimeZoneInfo.ConvertTime(s.StartsAtUtc, Tashkent).Date).Distinct().ToList();
+        Assert.Equal(5, days.Count); // Thu, Fri, Mon, Tue, Wed — the weekend is not bookable
+        Assert.All(slots.GroupBy(s => TimeZoneInfo.ConvertTime(s.StartsAtUtc, Tashkent).Date), g => Assert.Equal(4, g.Count()));
+    }
+
+    [Fact]
+    public void AStartDateMovesTheWindowThere()
+    {
+        // "Is there anything next Tuesday?" — the answer starts on that day, not today.
+        var slots = SlotEngine.GetSlots(Rules(), Tashkent, Array.Empty<Interval>(), EarlyThursday, days: 1, fromLocalDate: new DateOnly(2026, 9, 15));
+
+        Assert.NotEmpty(slots);
+        Assert.All(slots, s => Assert.Equal(new DateTime(2026, 9, 15), TimeZoneInfo.ConvertTime(s.StartsAtUtc, Tashkent).Date));
+        Assert.Equal(Local(2026, 9, 15, 9), slots[0].StartsAtUtc);
+    }
+
+    [Fact]
+    public void AStartDateInThePastMeansToday()
+    {
+        var slots = SlotEngine.GetSlots(Rules(), Tashkent, Array.Empty<Interval>(), EarlyThursday, days: 1, fromLocalDate: new DateOnly(2026, 9, 1));
+
+        Assert.NotEmpty(slots);
+        Assert.Equal(new DateTime(2026, 9, 10), TimeZoneInfo.ConvertTime(slots[0].StartsAtUtc, Tashkent).Date);
+    }
 }

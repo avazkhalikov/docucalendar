@@ -77,4 +77,25 @@ public class DefaultCalendarTests
         var only = Cal("Only", Avaz);
         Assert.Same(only, CalendarService.Choose(new[] { only }, "only"));
     }
+
+    [Fact]
+    public void TheFullNameStillLandsOnTheStarredCalendar()
+    {
+        // Seen live: "Avaz Khalikov" string-matches only the bare "Avaz" label, and a single match
+        // was honoured as named — so the un-starred Google calendar took the booking.
+        var calendars = new[] { Cal("Avaz", Avaz), Cal("Avaz Outlook", Avaz, isDefault: true), Cal("Behzod", Behzod) };
+
+        Assert.Equal("Avaz Outlook", CalendarService.MatchByLabel(calendars, "Avaz Khalikov")?.Label);
+        Assert.Equal("Avaz Outlook", CalendarService.MatchByLabel(calendars, "avaz")?.Label);
+    }
+
+    [Fact]
+    public void ADeskIsNotRedirectedToItsOwnersPersonalDiary()
+    {
+        // The owner runs the "Admissions" desk AND has a starred personal diary. Asking for
+        // admissions must land on the desk: the two labels are not variants of one name.
+        var calendars = new[] { Cal("Admissions", Avaz), Cal("Avaz Outlook", Avaz, isDefault: true) };
+
+        Assert.Equal("Admissions", CalendarService.MatchByLabel(calendars, "admissions")?.Label);
+    }
 }

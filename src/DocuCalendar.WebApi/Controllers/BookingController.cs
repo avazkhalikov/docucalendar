@@ -43,6 +43,8 @@ public sealed class BookingController : ControllerBase
         [FromQuery] string? calendarHint,
         [FromQuery] int days = 7,
         [FromQuery] int? minutes = null,
+        [FromQuery] DateOnly? from = null,
+        [FromQuery] int perDay = 0,
         CancellationToken ct = default)
     {
         var tenant = HttpContext.Tenant();
@@ -59,7 +61,7 @@ public sealed class BookingController : ControllerBase
         if (calendar == null)
             return Ok(new { noCalendar = true, message = "No calendar is set up for this context." });
 
-        var slots = await _booking.GetSlotsAsync(tenant, calendar, days, minutes, ct);
+        var slots = await _booking.GetSlotsAsync(tenant, calendar, days, minutes, ct, from: from, perDay: Math.Clamp(perDay, 0, 50));
         // The calendar's own way of taking appointments travels with its times, so the assistant
         // adapts even when the caller named a person whose script differs from the line's default.
         var script = Application.Scheduling.BookingScript.Parse(calendar.BookingScriptJson);
