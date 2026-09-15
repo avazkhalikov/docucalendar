@@ -11,6 +11,7 @@ import {
 
 import WeekEditor from '../components/WeekEditor';
 import BookingScriptEditor from '../components/BookingScriptEditor';
+import type { BookingTemplate } from '../api';
 import { ProviderMark, ago, SYNC_INTERVALS } from '../components/SyncBits';
 import { parseBookingScript, serialiseBookingScript, type BookingScript } from '../api';
 
@@ -44,6 +45,7 @@ export default function CalendarsPage({ me }: { me: Me }) {
   const [people, setPeople] = useState<Person[]>([]);
   const [providers, setProviders] = useState<SyncProvider[]>([]);
   const [connections, setConnections] = useState<SyncConnection[]>([]);
+  const [templates, setTemplates] = useState<BookingTemplate[]>([]);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -60,6 +62,7 @@ export default function CalendarsPage({ me }: { me: Me }) {
     // picker falls back to "Mine", which is what a single-handed account wants anyway.
     api.people().then((r) => setPeople(r.people)).catch(() => setPeople([]));
     api.syncProviders().then((r) => setProviders(r.providers)).catch(() => setProviders([]));
+    api.bookingTemplates().then((r) => setTemplates(r.templates)).catch(() => setTemplates([]));
     void loadSync();
   }, [loadSync]);
 
@@ -215,6 +218,7 @@ export default function CalendarsPage({ me }: { me: Me }) {
               onError={setError}
               ownerName={people.find((p) => p.userId === row.ownerUserId)?.name}
               providers={providers}
+              templates={templates}
               connection={connections.find((c) => c.calendarId === row.id)}
               onSyncChanged={loadSync}
             />
@@ -233,6 +237,7 @@ function CalendarCard({
   onError,
   ownerName,
   providers,
+  templates,
   connection,
   onSyncChanged,
 }: {
@@ -243,6 +248,7 @@ function CalendarCard({
   onError: (message: string) => void;
   ownerName?: string;
   providers: SyncProvider[];
+  templates: BookingTemplate[];
   connection?: SyncConnection;
   onSyncChanged: () => Promise<void>;
 }) {
@@ -462,6 +468,17 @@ function CalendarCard({
               maxMinutes={draft.maxMinutes}
               disabled={!row.canEdit}
               onChange={setScript}
+              templates={templates}
+              onApplyTemplate={(t) => {
+                // The template proposes lengths too: a 90-minute root canal needs "longest allowed"
+                // to be 90, or Save would refuse the very script the picker just filled in.
+                setScript({
+                  instructions: t.script.instructions ?? '',
+                  questions: t.script.questions.map((q) => ({ ...q })),
+                  services: t.script.services.map((s) => ({ ...s })),
+                });
+                setDraft((d) => ({ ...d, slotMinutes: t.slotMinutes, maxMinutes: t.maxMinutes }));
+              }}
             />
           </div>
 

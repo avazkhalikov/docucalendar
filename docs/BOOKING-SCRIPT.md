@@ -77,3 +77,20 @@ reason.
    answer; the Telegram message carries both; the Outlook/Google event body lists them.
 3. Refuse to answer the question: the assistant asks again rather than booking.
 4. Clear the script: the assistant is back to the standard flow.
+
+## Templates (2026-09-15)
+
+A blank form asks a dentist to invent "what hurts?" and guess how long a filling takes. The
+"How the assistant books here" section now opens with **Start from a template**: ten kinds of
+business — dental clinic, university admissions, bank branch, customer-support callbacks, medical
+clinic, beauty salon and barber, law firm and notary, car service, restaurant reservations, real
+estate — each with its questions (required ones marked), its services with lengths, its
+instructions, and the appointment lengths that suit it. Choosing one fills the form and sets the
+calendar's default and longest appointment; the owner changes what they like and clicks Save.
+Nothing is written until then.
+
+The templates live on the server (`BookingTemplates.cs`, `GET /api/calendars/templates`) so one
+test, `BookingTemplatesTests`, runs every one of them through the same validation as Save with
+the lengths it proposes. The safety rule comes first in every script that has one — chest pain,
+severe dental pain, card numbers — because the first sentence is the one a model reads most
+carefully.

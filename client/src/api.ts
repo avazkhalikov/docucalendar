@@ -42,6 +42,16 @@ export interface BookingScript {
   services: Array<{ name: string; minutes: number }>;
 }
 
+/** A ready-made way of booking for one kind of business, with the lengths that suit it. */
+export interface BookingTemplate {
+  key: string;
+  name: string;
+  blurb: string;
+  slotMinutes: number;
+  maxMinutes: number;
+  script: BookingScript;
+}
+
 export const EMPTY_SCRIPT: BookingScript = { instructions: '', questions: [], services: [] };
 
 export function parseBookingScript(json: string | null | undefined): BookingScript {
@@ -229,6 +239,8 @@ export const api = {
   logout: () => call<{ signedOut: boolean }>('/session/logout', { method: 'POST' }),
 
   calendars: () => call<CalendarsResponse>('/calendars'),
+  /** Ready-made scripts for common kinds of business; choosing one fills the form, Save writes it. */
+  bookingTemplates: () => call<{ templates: BookingTemplate[] }>('/calendars/templates'),
   createCalendar: (body: { label: string; ownerUserId?: string }) =>
     call<{ id: string }>('/calendars', { method: 'POST', body: JSON.stringify(body) }),
   updateCalendar: (id: string, body: Record<string, unknown>) =>

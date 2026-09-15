@@ -1,5 +1,6 @@
-import { Plus, X, GripVertical, MessageSquareText, ListChecks, Timer } from 'lucide-react';
-import type { BookingScript } from '../api';
+import { useState } from 'react';
+import { Plus, X, GripVertical, MessageSquareText, ListChecks, Timer, Sparkles } from 'lucide-react';
+import type { BookingScript, BookingTemplate } from '../api';
 
 /**
  * How this calendar takes appointments, on top of the fixed spine (name, phone read back, only
@@ -9,14 +10,26 @@ import type { BookingScript } from '../api';
  * owner's own words.
  */
 export default function BookingScriptEditor({
-  value, maxMinutes, disabled, onChange,
+  value, maxMinutes, disabled, onChange, templates, onApplyTemplate,
 }: {
   value: BookingScript;
   maxMinutes: number;
   disabled: boolean;
   onChange: (next: BookingScript) => void;
+  /** Ready-made scripts to start from; the picker is hidden when there are none. */
+  templates?: BookingTemplate[];
+  /** Fills the form from a template — the parent also takes the lengths it proposes. */
+  onApplyTemplate?: (template: BookingTemplate) => void;
 }) {
   const set = (patch: Partial<BookingScript>) => onChange({ ...value, ...patch });
+  const [templateKey, setTemplateKey] = useState('');
+  const chosen = templates?.find((t) => t.key === templateKey);
+  const isBlank = !value.instructions && value.questions.length === 0 && value.services.length === 0;
+  const applyTemplate = () => {
+    if (!chosen || !onApplyTemplate) return;
+    if (!isBlank && !window.confirm(`Replace what is here with the "${chosen.name}" template? Nothing is saved until you click Save.`)) return;
+    onApplyTemplate(chosen);
+  };
   // No width here: each row decides who grows. (A shared w-full on both inputs of the service
   // row let the minutes box win the whole line and squeezed the name to a sliver.)
   const field =
@@ -25,6 +38,36 @@ export default function BookingScriptEditor({
 
   return (
     <div className="space-y-4">
+      {/* Ten kinds of business, ready to go: a dentist should not have to invent "what hurts?"
+          from a blank form. Choosing one fills everything below; only Save writes it. */}
+      {!disabled && templates && templates.length > 0 && (
+        <div className="rounded-lg border border-dashed border-slate-300 dark:border-slate-700 p-3">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1.5 inline-flex items-center gap-1">
+            <Sparkles className="w-3.5 h-3.5" /> Start from a template
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={templateKey} onChange={(e) => setTemplateKey(e.target.value)} className={`${field} min-w-[18rem]`}>
+              <option value="">Choose your kind of business…</option>
+              {templates.map((t) => (
+                <option key={t.key} value={t.key}>{t.name}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={!chosen}
+              onClick={applyTemplate}
+              className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium"
+            >
+              Fill in the form
+            </button>
+          </div>
+          <p className="mt-1.5 text-[11px] text-slate-400">
+            {chosen
+              ? `${chosen.blurb} Fills the questions, services and instructions below, sets appointments to ${chosen.slotMinutes} min (longest ${chosen.maxMinutes}); change anything you like, then Save.`
+              : 'Questions, services and instructions written for that business, ready to adjust and save.'}
+          </p>
+        </div>
+      )}
       <div>
         <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-1 inline-flex items-center gap-1">
           <ListChecks className="w-3.5 h-3.5" /> Questions the assistant asks before booking
