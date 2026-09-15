@@ -392,9 +392,19 @@ function DayList({
                         {timeInZone(a.startsAtUtc, timeZone)} · {a.minutes} min
                         {a.status === 'cancelled' && <span className="ml-1 text-[10px] uppercase text-slate-400">cancelled</span>}
                       </div>
-                      <div className="text-[12px] text-slate-700 dark:text-slate-200 truncate">{a.visitorName}</div>
+                      <div className="text-[12px] text-slate-700 dark:text-slate-200 truncate">
+                        {a.visitorName}
+                        {a.serviceName && <span className="text-slate-400"> · {a.serviceName}</span>}
+                      </div>
                       <a href={`tel:${a.visitorPhone}`} className="text-[11px] text-blue-600 dark:text-blue-400">{a.visitorPhone}</a>
                       {a.topic && <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{a.topic}</div>}
+                      {a.answers?.map((ans, i) => (
+                        // What the caller said before booking — the reason the person keeping this
+                        // appointment opens it at all.
+                        <div key={i} className="text-[11px] text-slate-500 dark:text-slate-400">
+                          <span className="text-slate-400">{ans.question}</span> {ans.answer}
+                        </div>
+                      ))}
                     </div>
                     {canEdit && a.status !== 'cancelled' && (
                       <button type="button" title="Cancel this appointment" onClick={() => onCancel(a)} className="text-slate-400 hover:text-red-500">

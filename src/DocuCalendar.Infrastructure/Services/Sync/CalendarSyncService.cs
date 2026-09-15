@@ -365,7 +365,11 @@ public sealed class CalendarSyncService
             $"Visitor: {a.VisitorName}",
             $"Phone: {a.VisitorPhone}",
         };
+        if (!string.IsNullOrWhiteSpace(a.ServiceName)) lines.Add($"Service: {a.ServiceName}");
         if (!string.IsNullOrWhiteSpace(a.Topic)) lines.Add($"About: {a.Topic}");
+        // What the caller answered before booking — the reason a dentist opens the event at all.
+        foreach (var answer in BookingService.ParseAnswers(a.AnswersJson))
+            lines.Add($"{answer.Question} {answer.Answer}");
         lines.Add($"Calendar: {calendar.Label}");
         lines.Add(a.Channel switch
         {

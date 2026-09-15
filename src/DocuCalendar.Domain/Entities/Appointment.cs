@@ -23,6 +23,13 @@ public class Appointment
 
     public string? Topic { get; set; }
 
+    /// <summary>Which of the calendar's services was booked, when it has any ("Filling").</summary>
+    public string? ServiceName { get; set; }
+
+    /// <summary>The caller's answers to the calendar's intake questions, as JSON
+    /// [{"question":…,"answer":…}] — what the person keeping the appointment needs to know.</summary>
+    public string? AnswersJson { get; set; }
+
     /// <summary>"phone" | "chat" | "manual" — where the booking came from.</summary>
     public string Channel { get; set; } = "manual";
 

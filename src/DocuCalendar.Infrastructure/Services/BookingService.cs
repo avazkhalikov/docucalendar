@@ -73,6 +73,8 @@ public sealed class BookingService
         string? topic,
         string channel,
         string? sourceRef,
+        string? serviceName,
+        string? answersJson,
         CancellationToken ct)
     {
         visitorName = (visitorName ?? string.Empty).Trim();
@@ -84,7 +86,13 @@ public sealed class BookingService
             return BookOutcome.Invalid("A reachable phone number is required before an appointment can be made.");
 
         var rules = RulesOf(calendar);
-        var minutes = SlotEngine.ClampDuration(rules, requestedMinutes);
+
+        // A named service decides the length — a filling is an hour whatever the default slot is.
+        // The caller's own request still applies when no service matched, and the calendar's
+        // ceiling applies to both.
+        var script = BookingScript.Parse(calendar.BookingScriptJson);
+        var service = script.FindService(serviceName);
+        var minutes = SlotEngine.ClampDuration(rules, service?.Minutes ?? requestedMinutes);
         var zone = TenantService.ZoneOf(tenant);
         var now = DateTimeOffset.UtcNow;
         // The wire may deliver "+05:00"; everything below stores and compares in UTC.
@@ -113,6 +121,8 @@ public sealed class BookingService
                 VisitorName = visitorName,
                 VisitorPhone = visitorPhone,
                 Topic = string.IsNullOrWhiteSpace(topic) ? null : topic!.Trim(),
+                ServiceName = service?.Name,
+                AnswersJson = answersJson,
                 Channel = channel,
                 SourceRef = sourceRef,
                 Status = "confirmed",
@@ -145,6 +155,45 @@ public sealed class BookingService
             throw;
         }
     }
+
+    /// <summary>
+    /// The caller's answers, as the JSON kept on the appointment: only pairs with something in
+    /// both halves, trimmed, capped — a model can send anything, and a column is not a bin.
+    /// </summary>
+    public static string? AnswersToJson(IEnumerable<(string? Question, string? Answer)>? answers)
+    {
+        if (answers is null) return null;
+        var clean = answers
+            .Where(a => !string.IsNullOrWhiteSpace(a.Question) && !string.IsNullOrWhiteSpace(a.Answer))
+            .Select(a => new BookingAnswer(Clip(a.Question!.Trim(), 200), Clip(a.Answer!.Trim(), 500)))
+            .Take(BookingScript.MaxQuestions)
+            .ToList();
+        if (clean.Count == 0) return null;
+        var json = System.Text.Json.JsonSerializer.Serialize(clean, AnswersJsonOptions);
+        return json.Length > 4000 ? null : json;
+    }
+
+    public static IReadOnlyList<BookingAnswer> ParseAnswers(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return Array.Empty<BookingAnswer>();
+        try
+        {
+            return System.Text.Json.JsonSerializer.Deserialize<List<BookingAnswer>>(json, AnswersJsonOptions)
+                   ?? (IReadOnlyList<BookingAnswer>)Array.Empty<BookingAnswer>();
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return Array.Empty<BookingAnswer>();
+        }
+    }
+
+    private static readonly System.Text.Json.JsonSerializerOptions AnswersJsonOptions = new()
+    {
+        PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true,
+    };
+
+    private static string Clip(string s, int max) => s.Length > max ? s[..max] : s;
 
     /// <summary>Everything that occupies the calendar: blocked time and appointments alike. The
     /// slot engine does not care which is which, and neither should a visitor.</summary>

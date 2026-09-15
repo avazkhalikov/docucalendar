@@ -54,6 +54,7 @@ public sealed class CalendarsController : StaffControllerBase
                 c.MinLeadMinutes,
                 c.HorizonDays,
                 weeklyAvailability = c.WeeklyAvailabilityJson,
+                bookingScript = c.BookingScriptJson,
                 c.Active,
                 c.IsDefault,
             }),
@@ -276,6 +277,21 @@ public sealed class CalendarsController : StaffControllerBase
             }
             calendar.WeeklyAvailabilityJson = body.WeeklyAvailability;
         }
+        if (body.BookingScript != null)
+        {
+            // Empty string clears it. Validated against the calendar's ceiling AFTER MaxMinutes
+            // above, so raising both in one save works in either order.
+            if (string.IsNullOrWhiteSpace(body.BookingScript))
+            {
+                calendar.BookingScriptJson = null;
+            }
+            else
+            {
+                var problem = BookingScript.Validate(body.BookingScript, calendar.MaxMinutes, out var script);
+                if (problem != null) { error = problem; return; }
+                calendar.BookingScriptJson = script.IsEmpty ? null : script.ToJson();
+            }
+        }
     }
 
     public sealed class CalendarRequest
@@ -288,6 +304,8 @@ public sealed class CalendarsController : StaffControllerBase
         public int? MinLeadMinutes { get; set; }
         public int? HorizonDays { get; set; }
         public string? WeeklyAvailability { get; set; }
+        /// <summary>The booking script as JSON; "" clears it. See BookingScript.</summary>
+        public string? BookingScript { get; set; }
         public bool? Active { get; set; }
     }
 

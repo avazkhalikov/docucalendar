@@ -56,6 +56,13 @@ public class StaffCalendar
     /// </summary>
     public bool IsDefault { get; set; }
 
+    /// <summary>
+    /// How this calendar wants appointments taken, on top of the fixed name-and-phone spine:
+    /// instructions for the assistant, questions to ask first, services with their own lengths.
+    /// JSON, parsed by BookingScript; null or unreadable means "the standard way".
+    /// </summary>
+    public string? BookingScriptJson { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 

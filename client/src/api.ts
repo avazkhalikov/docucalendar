@@ -26,9 +26,43 @@ export interface CalendarRow {
   minLeadMinutes: number;
   horizonDays: number;
   weeklyAvailability: string;
+  /** How this calendar takes appointments beyond name + phone, as JSON; null = the standard way. */
+  bookingScript: string | null;
   active: boolean;
   /** The one of this person's calendars the assistant books into. */
   isDefault: boolean;
+}
+
+/** The shape inside CalendarRow.bookingScript. */
+export interface BookingScript {
+  instructions?: string | null;
+  questions: Array<{ ask: string; required: boolean }>;
+  services: Array<{ name: string; minutes: number }>;
+}
+
+export const EMPTY_SCRIPT: BookingScript = { instructions: '', questions: [], services: [] };
+
+export function parseBookingScript(json: string | null | undefined): BookingScript {
+  if (!json) return { ...EMPTY_SCRIPT, questions: [], services: [] };
+  try {
+    const raw = JSON.parse(json) as Partial<BookingScript>;
+    return {
+      instructions: raw.instructions ?? '',
+      questions: Array.isArray(raw.questions) ? raw.questions.map((q) => ({ ask: q.ask ?? '', required: !!q.required })) : [],
+      services: Array.isArray(raw.services) ? raw.services.map((s) => ({ name: s.name ?? '', minutes: Number(s.minutes) || 0 })) : [],
+    };
+  } catch {
+    return { ...EMPTY_SCRIPT, questions: [], services: [] };
+  }
+}
+
+/** Serialises for saving; an all-empty script becomes '' so the server clears it. */
+export function serialiseBookingScript(script: BookingScript): string {
+  const questions = script.questions.filter((q) => q.ask.trim());
+  const services = script.services.filter((s) => s.name.trim() && s.minutes > 0);
+  const instructions = (script.instructions ?? '').trim();
+  if (!instructions && questions.length === 0 && services.length === 0) return '';
+  return JSON.stringify({ instructions: instructions || null, questions, services });
 }
 
 export interface CalendarsResponse {
@@ -56,6 +90,10 @@ export interface AppointmentRow {
   visitorName: string;
   visitorPhone: string;
   topic: string | null;
+  /** The calendar's service that was booked, when it has any. */
+  serviceName?: string | null;
+  /** What the caller answered to the calendar's questions. */
+  answers?: Array<{ question: string; answer: string }>;
   channel: string;
   status: string;
 }

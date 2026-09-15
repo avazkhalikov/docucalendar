@@ -104,6 +104,8 @@ public sealed class ScheduleController : StaffControllerBase
                 a.VisitorName,
                 a.VisitorPhone,
                 a.Topic,
+                a.ServiceName,
+                answers = BookingService.ParseAnswers(a.AnswersJson).Select(x => new { x.Question, x.Answer }),
                 a.Channel,
                 a.Status,
             }),
@@ -170,7 +172,7 @@ public sealed class ScheduleController : StaffControllerBase
         var outcome = await _booking.BookAsync(
             tenant, calendar, body.StartsAtUtc.ToUniversalTime(), body.Minutes,
             body.VisitorName ?? string.Empty, body.VisitorPhone ?? string.Empty,
-            body.Topic, "manual", null, ct);
+            body.Topic, "manual", null, body.ServiceName, null, ct);
 
         if (!outcome.Success)
             return BadRequest(new
@@ -216,5 +218,6 @@ public sealed class ScheduleController : StaffControllerBase
         public string? VisitorName { get; set; }
         public string? VisitorPhone { get; set; }
         public string? Topic { get; set; }
+        public string? ServiceName { get; set; }
     }
 }

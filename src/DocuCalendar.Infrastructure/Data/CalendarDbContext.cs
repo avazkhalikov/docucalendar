@@ -62,6 +62,7 @@ public class CalendarDbContext : DbContext
             e.Property(c => c.Active).HasDefaultValue(true);
             e.Property(c => c.IsDefault).HasDefaultValue(false);
             e.Property(c => c.WeeklyAvailabilityJson).HasDefaultValue(StaffCalendar.DefaultWeek);
+            e.Property(c => c.BookingScriptJson).HasMaxLength(8000);
             e.HasIndex(c => new { c.TenantId, c.Active });
             e.HasIndex(c => c.OwnerUserId);
         });
@@ -134,6 +135,8 @@ public class CalendarDbContext : DbContext
             e.Property(a => a.VisitorName).HasMaxLength(200).IsRequired();
             e.Property(a => a.VisitorPhone).HasMaxLength(50).IsRequired();
             e.Property(a => a.Topic).HasMaxLength(500);
+            e.Property(a => a.ServiceName).HasMaxLength(120);
+            e.Property(a => a.AnswersJson).HasMaxLength(4000);
             e.Property(a => a.Channel).HasMaxLength(20).IsRequired().HasDefaultValue("manual");
             e.Property(a => a.SourceRef).HasMaxLength(200);
             e.Property(a => a.Status).HasMaxLength(20).IsRequired().HasDefaultValue("confirmed");

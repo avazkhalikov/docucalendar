@@ -65,6 +65,12 @@ export default function GuidePage() {
             <Setting label="Earliest notice" value="60 minutes" note="no ambushes ten minutes from now" />
             <Setting label="Gap between meetings" value="0 minutes" note="breathing room, if you want it" />
           </div>
+          <p className="mt-3 text-slate-500 dark:text-slate-400">
+            Further down the same card, <strong className="font-medium text-slate-800 dark:text-slate-200">How the
+            assistant books here</strong> is yours to shape: the questions it asks before booking (“What is the problem
+            with your teeth?”), services with their own lengths (a filling is an hour, a consultation twenty minutes),
+            and instructions in your own words. Name and phone number are always asked.
+          </p>
         </Step>
 
         <Step

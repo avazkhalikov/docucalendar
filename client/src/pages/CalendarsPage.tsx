@@ -9,7 +9,9 @@ import {
 } from '../api';
 
 import WeekEditor from '../components/WeekEditor';
+import BookingScriptEditor from '../components/BookingScriptEditor';
 import { ProviderMark, ago, SYNC_INTERVALS } from '../components/SyncBits';
+import { parseBookingScript, serialiseBookingScript, type BookingScript } from '../api';
 
 /**
  * Google and Microsoft refuse to render their sign-in inside a frame, so from within the
@@ -244,10 +246,14 @@ function CalendarCard({
   onSyncChanged: () => Promise<void>;
 }) {
   const [draft, setDraft] = useState(row);
+  const [script, setScript] = useState<BookingScript>(() => parseBookingScript(row.bookingScript));
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => setDraft(row), [row]);
+  useEffect(() => {
+    setDraft(row);
+    setScript(parseBookingScript(row.bookingScript));
+  }, [row]);
 
   const save = async () => {
     setSaving(true);
@@ -261,6 +267,7 @@ function CalendarCard({
         minLeadMinutes: draft.minLeadMinutes,
         horizonDays: draft.horizonDays,
         weeklyAvailability: draft.weeklyAvailability,
+        bookingScript: serialiseBookingScript(script),
       });
       setSaved(true);
       await onSaved();
@@ -428,6 +435,22 @@ function CalendarCard({
               value={draft.weeklyAvailability}
               disabled={!row.canEdit}
               onChange={(json) => setDraft({ ...draft, weeklyAvailability: json })}
+            />
+          </div>
+
+          {/* How the assistant takes appointments here — the part that differs between a dentist,
+              a bank desk and a university line. Name + phone stay fixed underneath. */}
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+            <h3 className="text-sm font-medium mb-1">How the assistant books here</h3>
+            <p className="text-[11px] text-slate-400 mb-3">
+              The assistant always takes a name and a phone number and offers only real free times. Everything below is
+              yours to shape.
+            </p>
+            <BookingScriptEditor
+              value={script}
+              maxMinutes={draft.maxMinutes}
+              disabled={!row.canEdit}
+              onChange={setScript}
             />
           </div>
 

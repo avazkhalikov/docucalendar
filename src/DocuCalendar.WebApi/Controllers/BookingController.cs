@@ -51,6 +51,9 @@ public sealed class BookingController : ControllerBase
             return Ok(new { noCalendar = true, message = "No calendar is set up for this context." });
 
         var slots = await _booking.GetSlotsAsync(tenant, calendar, days, minutes, ct);
+        // The calendar's own way of taking appointments travels with its times, so the assistant
+        // adapts even when the caller named a person whose script differs from the line's default.
+        var script = Application.Scheduling.BookingScript.Parse(calendar.BookingScriptJson);
         return Ok(new
         {
             calendarId = calendar.Id,
@@ -59,6 +62,12 @@ public sealed class BookingController : ControllerBase
             slotMinutes = calendar.SlotMinutes,
             maxMinutes = calendar.MaxMinutes,
             slots = slots.Select(s => new { startsAtUtc = s.StartsAtUtc, local = s.Local }),
+            script = new
+            {
+                instructions = script.Instructions,
+                questions = script.Questions.Select(q => new { ask = q.Ask, required = q.Required }),
+                services = script.Services.Select(s => new { name = s.Name, minutes = s.Minutes }),
+            },
         });
     }
 
@@ -73,7 +82,8 @@ public sealed class BookingController : ControllerBase
         var outcome = await _booking.BookAsync(
             tenant, calendar, body.StartsAtUtc, body.Minutes,
             body.VisitorName ?? string.Empty, body.VisitorPhone ?? string.Empty,
-            body.Topic, string.IsNullOrWhiteSpace(body.Channel) ? "chat" : body.Channel!, body.SourceRef, ct);
+            body.Topic, string.IsNullOrWhiteSpace(body.Channel) ? "chat" : body.Channel!, body.SourceRef,
+            body.ServiceName, BookingService.AnswersToJson(body.Answers?.Select(a => (a.Question, a.Answer))), ct);
 
         if (!outcome.Success)
         {
@@ -109,6 +119,7 @@ public sealed class BookingController : ControllerBase
             local = Application.Scheduling.SlotEngine.FormatLocal(appointment.StartsAt, zone),
             minutes = (int)(appointment.EndsAt - appointment.StartsAt).TotalMinutes,
             calendarLabel = calendar.Label,
+            serviceName = appointment.ServiceName,
         });
     }
 
@@ -140,6 +151,16 @@ public sealed class BookingController : ControllerBase
         public string? Topic { get; set; }
         public string? Channel { get; set; }
         public string? SourceRef { get; set; }
+        /// <summary>One of the calendar's services, by name. Sets the length; unknown names are ignored.</summary>
+        public string? ServiceName { get; set; }
+        /// <summary>The caller's answers to the calendar's intake questions.</summary>
+        public List<AnswerDto>? Answers { get; set; }
+    }
+
+    public sealed class AnswerDto
+    {
+        public string? Question { get; set; }
+        public string? Answer { get; set; }
     }
 
     public sealed class CancelRequest

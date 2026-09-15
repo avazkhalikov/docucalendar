@@ -178,9 +178,15 @@ export default function WeekGrid({
                         : item.channel === 'chat' ? <MessageSquare className="w-3 h-3 shrink-0 mt-px" />
                           : <User className="w-3 h-3 shrink-0 mt-px" />
                     }
-                    title={item.visitorName}
+                    title={item.serviceName ? `${item.visitorName} · ${item.serviceName}` : item.visitorName}
                     subtitle={`${timeInZone(item.startsAtUtc, timeZone)} · ${item.minutes} min${item.topic ? ` · ${item.topic}` : ''}`}
-                    hint={`${item.visitorName} · ${item.visitorPhone} · ${timeInZone(item.startsAtUtc, timeZone)}, ${item.minutes} min${item.topic ? `\n${item.topic}` : ''}${item.status === 'cancelled' ? '\n(cancelled)' : ''}`}
+                    hint={
+                      `${item.visitorName} · ${item.visitorPhone} · ${timeInZone(item.startsAtUtc, timeZone)}, ${item.minutes} min` +
+                      (item.serviceName ? `\n${item.serviceName}` : '') +
+                      (item.topic ? `\n${item.topic}` : '') +
+                      (item.answers?.length ? '\n' + item.answers.map((a) => `${a.question} ${a.answer}`).join('\n') : '') +
+                      (item.status === 'cancelled' ? '\n(cancelled)' : '')
+                    }
                     onRemove={canEdit && item.status !== 'cancelled' ? () => onCancelAppointment(item) : undefined}
                     removeTitle="Cancel this appointment"
                   />

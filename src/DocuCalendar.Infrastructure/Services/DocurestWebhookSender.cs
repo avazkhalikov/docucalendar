@@ -67,6 +67,8 @@ public sealed class DocurestWebhookSender
                 visitorName = appointment.VisitorName,
                 visitorPhone = appointment.VisitorPhone,
                 topic = appointment.Topic,
+                serviceName = appointment.ServiceName,
+                answers = BookingService.ParseAnswers(appointment.AnswersJson).Select(a => new { question = a.Question, answer = a.Answer }),
                 channel = appointment.Channel,
                 status = appointment.Status,
             },
