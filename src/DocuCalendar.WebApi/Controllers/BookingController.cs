@@ -98,7 +98,7 @@ public sealed class BookingController : ControllerBase
             body.VisitorName ?? string.Empty, body.VisitorPhone ?? string.Empty,
             body.Topic, string.IsNullOrWhiteSpace(body.Channel) ? "chat" : body.Channel!, body.SourceRef,
             body.ServiceName, BookingService.AnswersToJson(body.Answers?.Select(a => (a.Question, a.Answer))), ct,
-            callerPhone: body.CallerPhone);
+            callerPhone: body.CallerPhone, canNotifyCaller: body.CanNotifyCaller);
 
         if (!outcome.Success)
         {
@@ -135,7 +135,31 @@ public sealed class BookingController : ControllerBase
             minutes = (int)(appointment.EndsAt - appointment.StartsAt).TotalMinutes,
             calendarLabel = calendar.Label,
             serviceName = appointment.ServiceName,
+            // "pending" means a request the owner still has to accept; "confirmed" is a booking.
+            status = appointment.Status,
+            // A colleague from the staff list: the answer also goes to this address.
+            notifyEmail = appointment.NotifyEmail,
         });
+    }
+
+    /// <summary>
+    /// Docurest accepting or declining a request on the owner's behalf — the buttons under the
+    /// Telegram message. The same rules as the Schedule page: only a pending request changes.
+    /// </summary>
+    [HttpPost("appointments/{appointmentId:guid}/decide")]
+    public async Task<IActionResult> Decide(Guid appointmentId, [FromBody] DecideRequest body, CancellationToken ct)
+    {
+        var tenant = HttpContext.Tenant();
+        var decisions = HttpContext.RequestServices.GetRequiredService<AppointmentDecisions>();
+        var result = await decisions.DecideAsync(tenant.TenantId, appointmentId, body.Confirm, body.ByName, ct);
+        if (!result.Found) return NotFound(new { message = "No such appointment on this account." });
+        return Ok(new { status = result.Status, changed = result.WasPending });
+    }
+
+    public sealed class DecideRequest
+    {
+        public bool Confirm { get; set; }
+        public string? ByName { get; set; }
     }
 
     /// <summary>Cancelling from the Docurest side (a caller who rings back to call it off).</summary>
@@ -172,6 +196,8 @@ public sealed class BookingController : ControllerBase
         public List<AnswerDto>? Answers { get; set; }
         /// <summary>The number the call came from (caller ID), not the number the caller gave: it unlocks "Bookable staff" hours.</summary>
         public string? CallerPhone { get; set; }
+        /// <summary>Whether the caller can be told the outcome later (Docurest has an SMS service for this account). Without it, a calendar that asks for confirmation books instantly.</summary>
+        public bool CanNotifyCaller { get; set; }
     }
 
     public sealed class AnswerDto

@@ -24,7 +24,8 @@ export default function StaffCallersEditor({
       </p>
       <p className="text-[11px] text-slate-400 mb-2">
         Colleagues by the number they call from. A call from one of these numbers is offered the staff hours as well as
-        the public ones; everybody else sees public hours only. The name is just so you remember whose number it is.
+        the public ones; everybody else sees public hours only. Add an e-mail and every booking, confirmation or
+        cancellation of theirs is e-mailed to them as well — it costs nothing and needs no SMS service.
       </p>
       <div className="space-y-1.5">
         {value.map((s, i) => (
@@ -44,7 +45,16 @@ export default function StaffCallersEditor({
               inputMode="tel"
               maxLength={32}
               onChange={(e) => update(i, { phone: e.target.value })}
-              className={`${field} w-48 shrink-0 tabular-nums`}
+              className={`${field} w-44 shrink-0 tabular-nums`}
+            />
+            <input
+              value={s.email ?? ''}
+              disabled={disabled}
+              placeholder="e-mail (optional)"
+              inputMode="email"
+              maxLength={120}
+              onChange={(e) => update(i, { email: e.target.value })}
+              className={`${field} w-52 shrink-0`}
             />
             {!disabled && (
               <button

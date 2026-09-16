@@ -151,6 +151,17 @@ export default function SchedulePage({ me }: { me: Me }) {
     }
   };
 
+  // A request the owner accepts or declines; Docurest texts the caller either way.
+  const decideAppointment = async (a: AppointmentRow, confirm: boolean) => {
+    try {
+      await api.decideAppointment(a.id, confirm);
+      setNotice(confirm ? 'Request accepted — the caller is being told.' : 'Request declined — the caller is being told.');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not decide on that request.');
+    }
+  };
+
   const removeBusy = async (b: BusyRow) => {
     try {
       await api.removeBusy(b.id);
@@ -275,7 +286,7 @@ export default function SchedulePage({ me }: { me: Me }) {
             />
           )}
           {view === 'list' && (
-            <DayList days={days} byDay={byDay} timeZone={week.timeZone} canEdit={canEdit} onCancel={cancelAppointment} onRemoveBusy={removeBusy} />
+            <DayList days={days} byDay={byDay} timeZone={week.timeZone} canEdit={canEdit} onCancel={cancelAppointment} onDecide={decideAppointment} onRemoveBusy={removeBusy} />
           )}
         </div>
       )}
@@ -326,13 +337,14 @@ export default function SchedulePage({ me }: { me: Me }) {
 
 /** The original day-by-day cards, kept as a third way of looking at the same week. */
 function DayList({
-  days, byDay, timeZone, canEdit, onCancel, onRemoveBusy,
+  days, byDay, timeZone, canEdit, onCancel, onDecide, onRemoveBusy,
 }: {
   days: string[];
   byDay: Map<string, { busy: BusyRow[]; appointments: AppointmentRow[]; free: number }>;
   timeZone: string;
   canEdit: boolean;
   onCancel: (a: AppointmentRow) => void;
+  onDecide: (a: AppointmentRow, confirm: boolean) => void;
   onRemoveBusy: (b: BusyRow) => void;
 }) {
   return (
@@ -377,7 +389,7 @@ function DayList({
               {entry.appointments.map((a) => (
                 <div
                   key={a.id}
-                  className={`rounded-lg px-2 py-1.5 ${a.status === 'cancelled' ? 'bg-slate-50 dark:bg-slate-900/40 opacity-60' : 'bg-blue-50 dark:bg-blue-950/40'}`}
+                  className={`rounded-lg px-2 py-1.5 ${a.status === 'pending' ? 'bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900' : a.status === 'confirmed' ? 'bg-blue-50 dark:bg-blue-950/40' : 'bg-slate-50 dark:bg-slate-900/40 opacity-60'}`}
                 >
                   <div className="flex items-start gap-1.5">
                     {a.channel === 'phone' ? (
@@ -390,7 +402,11 @@ function DayList({
                     <div className="min-w-0 flex-1">
                       <div className="text-[12px] font-medium tabular-nums">
                         {timeInZone(a.startsAtUtc, timeZone)} · {a.minutes} min
-                        {a.status === 'cancelled' && <span className="ml-1 text-[10px] uppercase text-slate-400">cancelled</span>}
+                        {a.status !== 'confirmed' && (
+                          <span className={`ml-1 text-[10px] uppercase ${a.status === 'pending' ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`}>
+                            {a.status === 'pending' ? 'request' : a.status}
+                          </span>
+                        )}
                       </div>
                       <div className="text-[12px] text-slate-700 dark:text-slate-200 truncate">
                         {a.visitorName}
@@ -406,7 +422,13 @@ function DayList({
                         </div>
                       ))}
                     </div>
-                    {canEdit && a.status !== 'cancelled' && (
+                    {canEdit && a.status === 'pending' && (
+                      <div className="flex flex-col gap-1 shrink-0">
+                        <button type="button" onClick={() => onDecide(a, true)} className="px-2 py-0.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-medium">Accept</button>
+                        <button type="button" onClick={() => onDecide(a, false)} className="px-2 py-0.5 rounded-md border border-slate-300 dark:border-slate-700 text-[11px] text-slate-600 dark:text-slate-300 hover:text-red-500">Decline</button>
+                      </div>
+                    )}
+                    {canEdit && a.status === 'confirmed' && (
                       <button type="button" title="Cancel this appointment" onClick={() => onCancel(a)} className="text-slate-400 hover:text-red-500">
                         <X className="w-3.5 h-3.5" />
                       </button>

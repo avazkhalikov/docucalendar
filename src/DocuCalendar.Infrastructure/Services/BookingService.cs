@@ -77,7 +77,8 @@ public sealed class BookingService
         string? serviceName,
         string? answersJson,
         CancellationToken ct,
-        string? callerPhone = null)
+        string? callerPhone = null,
+        bool canNotifyCaller = false)
     {
         visitorName = (visitorName ?? string.Empty).Trim();
         visitorPhone = (visitorPhone ?? string.Empty).Trim();
@@ -115,6 +116,12 @@ public sealed class BookingService
                     alternatives);
             }
 
+            // A colleague calling from a listed number with an e-mail on file is told by e-mail as
+            // well — and that alone makes them "tellable", so an internal request works even on an
+            // account with no SMS service.
+            var colleague = StaffCallers.FindByPhone(calendar.StaffCallersJson, callerPhone);
+            var notifyEmail = colleague?.Email;
+
             var appointment = new Appointment
             {
                 CalendarId = calendar.Id,
@@ -123,12 +130,14 @@ public sealed class BookingService
                 EndsAt = startUtc.AddMinutes(minutes),
                 VisitorName = visitorName,
                 VisitorPhone = visitorPhone,
+                NotifyEmail = notifyEmail,
                 Topic = string.IsNullOrWhiteSpace(topic) ? null : topic!.Trim(),
                 ServiceName = service?.Name,
                 AnswersJson = answersJson,
                 Channel = channel,
                 SourceRef = sourceRef,
-                Status = "confirmed",
+                // A request only when the calendar asks for it AND the caller can be told the answer.
+                Status = PendingRules.InitialStatus(calendar.RequiresConfirmation, canNotifyCaller || notifyEmail != null),
             };
             _db.Appointments.Add(appointment);
             await _db.SaveChangesAsync(ct);
@@ -242,7 +251,7 @@ public sealed class BookingService
             .ToList();
 
         var appointments = await _db.Appointments.AsNoTracking()
-            .Where(a => a.CalendarId == calendarId && a.Status == "confirmed" && a.EndsAt > fromUtc && a.StartsAt < toUtc)
+            .Where(a => a.CalendarId == calendarId && (a.Status == "confirmed" || a.Status == "pending") && a.EndsAt > fromUtc && a.StartsAt < toUtc)
             .Select(a => new { a.StartsAt, a.EndsAt })
             .ToListAsync(ct);
 

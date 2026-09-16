@@ -3,6 +3,7 @@ using System;
 using DocuCalendar.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace DocuCalendar.Infrastructure.Migrations
 {
     [DbContext(typeof(CalendarDbContext))]
-    partial class CalendarDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260915183515_AddRequests")]
+    partial class AddRequests
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -72,9 +75,6 @@ namespace DocuCalendar.Infrastructure.Migrations
 
                     b.Property<DateTimeOffset?>("ExternalSyncedAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("NotifyEmail")
-                        .HasColumnType("text");
 
                     b.Property<string>("ServiceName")
                         .HasMaxLength(120)

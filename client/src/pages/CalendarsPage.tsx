@@ -279,6 +279,7 @@ function CalendarCard({
         weeklyAvailability: draft.weeklyAvailability,
         bookingScript: serialiseBookingScript(script),
         staffCallers: serialiseStaffCallers(staffCallers),
+        requiresConfirmation: draft.requiresConfirmation,
       });
       setSaved(true);
       await onSaved();
@@ -479,6 +480,26 @@ function CalendarCard({
             <div className="mb-3">
               <StaffCallersEditor value={staffCallers} disabled={!row.canEdit} onChange={setStaffCallers} />
             </div>
+            {/* A request rather than a booking — but only when the caller can be told the answer,
+                which Docurest decides by whether the account has an SMS service switched on. */}
+            <label className="mb-3 flex items-start gap-2 text-[12px] text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={draft.requiresConfirmation}
+                disabled={!row.canEdit}
+                onChange={(e) => setDraft({ ...draft, requiresConfirmation: e.target.checked })}
+              />
+              <span>
+                <strong className="font-medium">Ask me before confirming.</strong>{' '}
+                <span className="text-slate-500 dark:text-slate-400">
+                  A booking becomes a request that you accept or decline from the Schedule page or straight from the Telegram
+                  message; the caller is texted the answer. A request nobody decides on lapses an hour before its time. Takes
+                  effect only while SMS notifications are switched on in Docurest — without a way to tell the caller, bookings
+                  stay instant.
+                </span>
+              </span>
+            </label>
             <WeekEditor
               value={draft.weeklyAvailability}
               disabled={!row.canEdit}

@@ -28,6 +28,8 @@ export interface CalendarRow {
   staffWindows: number;
   /** The staff list as JSON [{name, phone}], or null. */
   staffCallers: string | null;
+  /** "Ask me before confirming": bookings become requests the owner decides on, when the caller can be texted. */
+  requiresConfirmation: boolean;
   slotMinutes: number;
   maxMinutes: number;
   bufferMinutes: number;
@@ -79,13 +81,15 @@ export function parseBookingScript(json: string | null | undefined): BookingScri
 export interface StaffCaller {
   name: string;
   phone: string;
+  /** Optional: their bookings, confirmations and cancellations are e-mailed here too. */
+  email?: string;
 }
 
 export function parseStaffCallers(json: string | null | undefined): StaffCaller[] {
   if (!json) return [];
   try {
     const raw = JSON.parse(json) as Array<Partial<StaffCaller>>;
-    return Array.isArray(raw) ? raw.map((s) => ({ name: s.name ?? '', phone: s.phone ?? '' })) : [];
+    return Array.isArray(raw) ? raw.map((s) => ({ name: s.name ?? '', phone: s.phone ?? '', email: s.email ?? '' })) : [];
   } catch {
     return [];
   }
@@ -93,7 +97,9 @@ export function parseStaffCallers(json: string | null | undefined): StaffCaller[
 
 /** Blank rows are dropped; an empty list is the empty string, which clears it on the server. */
 export function serialiseStaffCallers(list: StaffCaller[]): string {
-  const rows = list.filter((s) => s.name.trim() || s.phone.trim()).map((s) => ({ name: s.name.trim(), phone: s.phone.trim() }));
+  const rows = list
+    .filter((s) => s.name.trim() || s.phone.trim() || (s.email ?? '').trim())
+    .map((s) => ({ name: s.name.trim(), phone: s.phone.trim(), email: (s.email ?? '').trim() || undefined }));
   return rows.length === 0 ? '' : JSON.stringify(rows);
 }
 
@@ -293,6 +299,9 @@ export const api = {
     calendarId: string,
     body: { startsAtUtc: string; minutes?: number; visitorName: string; visitorPhone: string; topic?: string },
   ) => call<{ id: string }>(`/schedule/${calendarId}/appointments`, { method: 'POST', body: JSON.stringify(body) }),
+  /** Accept or decline a pending request; the caller is texted the answer by Docurest. */
+  decideAppointment: (id: string, confirm: boolean) =>
+    call<{ status: string }>(`/schedule/appointments/${id}/${confirm ? 'confirm' : 'decline'}`, { method: 'POST' }),
   cancelAppointment: (id: string) =>
     call<{ cancelled: boolean }>(`/schedule/appointments/${id}/cancel`, { method: 'POST' }),
 

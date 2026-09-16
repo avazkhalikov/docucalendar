@@ -204,6 +204,26 @@ public sealed class ScheduleController : StaffControllerBase
         return Ok(new { cancelled = true });
     }
 
+    /// <summary>The owner (or the calendar's own person) accepting a request. Docurest texts the caller.</summary>
+    [HttpPost("appointments/{id:guid}/confirm")]
+    public Task<IActionResult> ConfirmAppointment(Guid id, CancellationToken ct) => DecideAsync(id, true, ct);
+
+    [HttpPost("appointments/{id:guid}/decline")]
+    public Task<IActionResult> DeclineAppointment(Guid id, CancellationToken ct) => DecideAsync(id, false, ct);
+
+    private async Task<IActionResult> DecideAsync(Guid id, bool confirm, CancellationToken ct)
+    {
+        var appointment = await _db.Appointments.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id && a.TenantId == TenantId, ct);
+        if (appointment == null) return NotFound();
+        var calendar = await _db.Calendars.AsNoTracking().FirstOrDefaultAsync(c => c.Id == appointment.CalendarId, ct);
+        if (calendar == null || !CanManage(calendar)) return NotYours();
+
+        var decisions = HttpContext.RequestServices.GetRequiredService<AppointmentDecisions>();
+        var result = await decisions.DecideAsync(TenantId, id, confirm, DisplayName, ct);
+        if (!result.WasPending) return BadRequest(new { message = $"That appointment is {result.Status}, not a pending request." });
+        return Ok(new { status = result.Status });
+    }
+
     public sealed class BusyRequest
     {
         public DateTimeOffset StartsAtUtc { get; set; }

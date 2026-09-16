@@ -22,6 +22,7 @@ public static class DependencyInjection
             npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", CalendarDbContext.SchemaName)));
 
         services.AddScoped<BookingService>();
+        services.AddScoped<AppointmentDecisions>();
         services.AddScoped<TenantService>();
         services.AddScoped<CalendarService>();
         // Outbound notifications to Docurest. A named client so its lifetime and DNS behaviour are

@@ -64,6 +64,8 @@ public class StaffCalendar
     public string? BookingScriptJson { get; set; }
     /// <summary>Colleagues whose calls unlock the "Bookable staff" hours: [{name, phone}], see StaffCallers.</summary>
     public string? StaffCallersJson { get; set; }
+    /// <summary>"Ask me before confirming": bookings become requests the owner accepts or declines — when the caller can be told (SMS on in Docurest).</summary>
+    public bool RequiresConfirmation { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

@@ -20,6 +20,8 @@ public class Appointment
 
     /// <summary>How to reach them. Read back to the caller for confirmation before the booking.</summary>
     public string VisitorPhone { get; set; } = string.Empty;
+    /// <summary>A colleague's e-mail from the calendar's staff list, when the call came from their number: every outcome is e-mailed there too.</summary>
+    public string? NotifyEmail { get; set; }
 
     public string? Topic { get; set; }
 
@@ -37,12 +39,15 @@ public class Appointment
     /// to the exact conversation that produced it.</summary>
     public string? SourceRef { get; set; }
 
-    /// <summary>"confirmed" | "cancelled". Cancelled rows stay: they are the record that the slot
+    /// <summary>"pending" | "confirmed" | "declined" | "expired" | "cancelled" (see PendingRules). Cancelled rows stay| "cancelled". Cancelled rows stay: they are the record that the slot
     /// was taken and released, and deleting them would erase a visitor's history.</summary>
     public string Status { get; set; } = "confirmed";
 
     public string? CancelledByName { get; set; }
     public DateTimeOffset? CancelledAt { get; set; }
+    /// <summary>When a request was confirmed, declined or expired, and by whom (null for expiry).</summary>
+    public DateTimeOffset? DecidedAt { get; set; }
+    public string? DecidedByName { get; set; }
 
     /// <summary>
     /// The copy of this appointment in the person's Outlook or Google calendar, once the sync has

@@ -48,4 +48,19 @@ public class StaffCallersTests
         Assert.Equal("+998 71 200 00 00", StaffCallers.Parse(json).Single().Phone);
         Assert.Null(StaffCallers.ToJson(Array.Empty<StaffCaller>()));
     }
+
+    [Fact]
+    public void AColleagueMayHaveAnEmail_AndIsFoundByTheNumberTheyCallFrom()
+    {
+        const string json = """[{"name":"Avaz","phone":"+998 90 123 45 67","email":"a.khalikov@wiut.uz"},{"name":"Gozal","phone":"998901112233"}]""";
+
+        Assert.Equal("a.khalikov@wiut.uz", StaffCallers.FindByPhone(json, "998901234567")?.Email);
+        Assert.Null(StaffCallers.FindByPhone(json, "998901112233")?.Email);
+        Assert.Null(StaffCallers.FindByPhone(json, "998900000000"));
+        Assert.Null(StaffCallers.FindByPhone(json, null));
+
+        Assert.Null(StaffCallers.Validate(json, out var list));
+        Assert.Equal("a.khalikov@wiut.uz", StaffCallers.Parse(StaffCallers.ToJson(list)).First().Email);
+        Assert.NotNull(StaffCallers.Validate("""[{"name":"X","phone":"998901234567","email":"not an address"}]""", out _));
+    }
 }

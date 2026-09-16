@@ -84,6 +84,7 @@ public sealed class CalendarsController : StaffControllerBase
                 bookableWindows = publicWindows.GetValueOrDefault(c.Id),
                 staffWindows = staffWindows.GetValueOrDefault(c.Id),
                 staffCallers = c.StaffCallersJson,
+                requiresConfirmation = c.RequiresConfirmation,
                 c.SlotMinutes,
                 c.MaxMinutes,
                 c.BufferMinutes,
@@ -370,6 +371,8 @@ public sealed class CalendarsController : StaffControllerBase
             if (problem != null) { error = problem; return; }
             calendar.StaffCallersJson = StaffCallers.ToJson(staff);
         }
+        if (body.RequiresConfirmation is { } requiresConfirmation)
+            calendar.RequiresConfirmation = requiresConfirmation;
     }
 
     public sealed class CalendarRequest
@@ -377,6 +380,8 @@ public sealed class CalendarsController : StaffControllerBase
         public string? Label { get; set; }
         /// <summary>The staff list as JSON [{name, phone}]; empty string clears it. See StaffCallers.</summary>
         public string? StaffCallers { get; set; }
+        /// <summary>"Ask me before confirming": bookings become requests when the caller can be told the answer.</summary>
+        public bool? RequiresConfirmation { get; set; }
         public Guid? OwnerUserId { get; set; }
         public int? SlotMinutes { get; set; }
         public int? MaxMinutes { get; set; }

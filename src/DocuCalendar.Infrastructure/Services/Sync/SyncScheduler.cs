@@ -123,6 +123,18 @@ public sealed class SyncWorker : BackgroundService
 
     private async Task RunAllAsync(CancellationToken ct)
     {
+        // Requests nobody decided on lapse an hour before their time; the caller is told by
+        // Docurest. Once a minute is plenty, and the sync tick is already once a minute.
+        try
+        {
+            using var scope = _scopes.CreateScope();
+            await scope.ServiceProvider.GetRequiredService<AppointmentDecisions>().ExpireAsync(DateTimeOffset.UtcNow, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "[Requests] Could not expire lapsed requests.");
+        }
+
         List<Guid> calendarIds;
         try
         {
