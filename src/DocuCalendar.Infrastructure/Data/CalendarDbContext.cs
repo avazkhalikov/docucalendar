@@ -105,6 +105,8 @@ public class CalendarDbContext : DbContext
             e.Property(x => x.Source).HasMaxLength(30).IsRequired().HasDefaultValue("manual");
             // Graph event ids run to a couple of hundred characters; Google's may reach a thousand.
             e.Property(x => x.ExternalId).HasMaxLength(1024);
+            e.Property(x => x.PushedEventId).HasMaxLength(1024);
+            e.Property(x => x.PushedProvider).HasMaxLength(30);
             e.HasIndex(x => new { x.CalendarId, x.StartsAt });
             // The sync matches remote events by this pair on every run.
             e.HasIndex(x => new { x.CalendarId, x.Source, x.ExternalId });
@@ -135,6 +137,7 @@ public class CalendarDbContext : DbContext
             e.Property(a => a.TenantId).HasMaxLength(100).IsRequired();
             e.Property(a => a.VisitorName).HasMaxLength(200).IsRequired();
             e.Property(a => a.VisitorPhone).HasMaxLength(50).IsRequired();
+            e.Property(a => a.CallerPhone).HasMaxLength(50);
             e.Property(a => a.Topic).HasMaxLength(500);
             e.Property(a => a.ServiceName).HasMaxLength(120);
             e.Property(a => a.AnswersJson).HasMaxLength(4000);

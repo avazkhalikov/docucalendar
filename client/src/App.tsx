@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
-import { CalendarDays, LogOut, Loader2, Users, CalendarClock, Share2, AlertTriangle, BookOpen, ExternalLink } from 'lucide-react';
+import { ListChecks, CalendarDays, LogOut, Loader2, Users, CalendarClock, Share2, AlertTriangle, BookOpen, ExternalLink } from 'lucide-react';
 import { api, ApiError, embedded, type Me } from './api';
 import { applyTitle, brandingNow, resolveBranding, type Branding } from './branding';
 import CalendarsPage from './pages/CalendarsPage';
 import SchedulePage from './pages/SchedulePage';
+import AppointmentsPage from './pages/AppointmentsPage';
 import RoutingPage from './pages/RoutingPage';
 import GuidePage from './pages/GuidePage';
 
@@ -82,6 +83,9 @@ export default function App() {
             <NavLink to="/schedule" className={navClass}>
               <span className="inline-flex items-center gap-1.5"><CalendarClock className="w-4 h-4" /> Schedule</span>
             </NavLink>
+            <NavLink to="/appointments" className={navClass}>
+              <span className="inline-flex items-center gap-1.5"><ListChecks className="w-4 h-4" /> Appointments</span>
+            </NavLink>
             {me.role === 'owner' && (
               <NavLink to="/routing" className={navClass}>
                 <span className="inline-flex items-center gap-1.5"><Share2 className="w-4 h-4" /> Assistant booking</span>
@@ -132,6 +136,7 @@ export default function App() {
           <Route path="/calendars" element={<CalendarsPage me={me} />} />
           <Route path="/schedule" element={<SchedulePage me={me} />} />
           <Route path="/schedule/:calendarId" element={<SchedulePage me={me} />} />
+          <Route path="/appointments" element={<AppointmentsPage me={me} />} />
           <Route path="/guide" element={<GuidePage />} />
           <Route
             path="/routing"

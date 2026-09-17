@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Loader2, Plus, Ban, X, Phone, MessageSquare, User, ChevronLeft, ChevronRight,
-  CalendarRange, CalendarDays, List, MousePointerClick,
+  CalendarRange, CalendarDays, List, MousePointerClick, CalendarCheck,
 } from 'lucide-react';
 import {
   api, dayInZone, timeInZone,
@@ -307,9 +307,13 @@ export default function SchedulePage({ me }: { me: Me }) {
               timeZone={me.timeZoneId}
               defaultDay={pick?.day ?? (view === 'month' ? today : anchor)}
               defaultStart={pick?.time}
+              linkedTo={connection ? connection.displayName : null}
               onSubmit={async (body) => {
                 await api.addBusy(calendarId, body);
-                setNotice('That time is now blocked — the assistant will not offer it.');
+                const bookable = body.kind === 'bookable' || body.kind === 'bookable-staff';
+                setNotice(bookable
+                  ? `Window added — the assistant may book these hours${connection ? `, and it is being copied to your ${connection.displayName}` : ''}.`
+                  : 'That time is now blocked — the assistant will not offer it.');
                 setPick(null);
                 await load();
               }}
@@ -363,14 +367,31 @@ function DayList({
                 <p className="text-[11px] text-slate-400">Nothing scheduled.</p>
               )}
 
-              {entry.busy.map((b) => (
-                <div key={b.id} className="flex items-start gap-1.5 rounded-lg bg-slate-100 dark:bg-slate-800/60 px-2 py-1.5">
-                  <Ban className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
+              {entry.busy.map((b) => {
+                // A bookable window is the opposite of blocked time and must never look like it.
+                const window = b.kind === 'bookable' || b.kind === 'bookable-staff';
+                return (
+                <div
+                  key={b.id}
+                  className={`flex items-start gap-1.5 rounded-lg px-2 py-1.5 ${
+                    window ? 'bg-emerald-50 dark:bg-emerald-950/40' : 'bg-slate-100 dark:bg-slate-800/60'
+                  }`}
+                >
+                  {window
+                    ? <CalendarCheck className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                    : <Ban className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />}
                   <div className="min-w-0 flex-1">
-                    <div className="text-[12px] text-slate-600 dark:text-slate-300 tabular-nums">
+                    <div className={`text-[12px] tabular-nums ${window ? 'text-emerald-800 dark:text-emerald-200' : 'text-slate-600 dark:text-slate-300'}`}>
                       {timeInZone(b.startsAtUtc, timeZone)}–{timeInZone(b.endsAtUtc, timeZone)}
                     </div>
-                    {b.source === 'manual' ? (
+                    {window ? (
+                      <div className="text-[11px] text-emerald-700 dark:text-emerald-300 truncate">
+                        {b.kind === 'bookable-staff' ? 'Bookable — staff only' : 'Bookable'}
+                        <span className="text-[10px] text-emerald-600/70 dark:text-emerald-400/70">
+                          {b.source === 'manual' ? (b.pushedTo ? ` · copied to ${sourceName(b.pushedTo)}` : '') : ` · from ${sourceName(b.source)}`}
+                        </span>
+                      </div>
+                    ) : b.source === 'manual' ? (
                       b.reason && <div className="text-[11px] text-slate-400 truncate">{b.reason}</div>
                     ) : (
                       <div className="text-[11px] text-slate-400 truncate">
@@ -379,12 +400,20 @@ function DayList({
                     )}
                   </div>
                   {canEdit && b.source === 'manual' && (
-                    <button type="button" title="Free this time up" onClick={() => onRemoveBusy(b)} className="text-slate-400 hover:text-red-500">
+                    <button
+                      type="button"
+                      title={window
+                        ? `Remove this bookable window${b.pushedTo ? ` (also from your ${sourceName(b.pushedTo)})` : ''}`
+                        : 'Free this time up'}
+                      onClick={() => onRemoveBusy(b)}
+                      className="text-slate-400 hover:text-red-500"
+                    >
                       <X className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
-              ))}
+                );
+              })}
 
               {entry.appointments.map((a) => (
                 <div
@@ -450,19 +479,28 @@ function addMinutes(time: string, minutes: number): string {
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
+/**
+ * Adding time to a calendar, in the two senses a person means: hours the assistant MAY book, and
+ * hours it may not. They are the same row underneath — a bookable window is simply one whose
+ * reason is the keyword — which is why a window added here and one typed into Outlook behave
+ * identically, and why this form can offer both without a second concept.
+ */
 function BusyForm({
-  timeZone, defaultDay, defaultStart, onSubmit, onError,
+  timeZone, defaultDay, defaultStart, linkedTo, onSubmit, onError,
 }: {
   timeZone: string;
   defaultDay: string;
   defaultStart?: string;
-  onSubmit: (body: { startsAtUtc: string; endsAtUtc: string; reason?: string }) => Promise<void>;
+  /** "Outlook 365" / "Google Calendar" when this calendar is linked — a window is copied there. */
+  linkedTo?: string | null;
+  onSubmit: (body: { startsAtUtc: string; endsAtUtc: string; reason?: string; kind?: string }) => Promise<void>;
   onError: (message: string) => void;
 }) {
   const [day, setDay] = useState(defaultDay);
   const [start, setStart] = useState(defaultStart ?? '09:00');
   const [end, setEnd] = useState(defaultStart ? addMinutes(defaultStart, 60) : '12:00');
   const [reason, setReason] = useState('');
+  const [kind, setKind] = useState<'busy' | 'bookable' | 'bookable-staff'>('busy');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => setDay(defaultDay), [defaultDay]);
@@ -473,19 +511,26 @@ function BusyForm({
     }
   }, [defaultStart]);
 
+  const bookable = kind !== 'busy';
+  const input = 'px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#0b0b0f] border border-slate-300 dark:border-slate-700 text-sm';
+
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#101016] p-4">
-      <h2 className="text-sm font-medium mb-2">Block time</h2>
+      <h2 className="text-sm font-medium mb-2">Add time</h2>
       <div className="flex flex-wrap items-end gap-2">
-        <input type="date" value={day} onChange={(e) => setDay(e.target.value)}
-          className="px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#0b0b0f] border border-slate-300 dark:border-slate-700 text-sm" />
-        <input type="time" value={start} onChange={(e) => setStart(e.target.value)}
-          className="px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#0b0b0f] border border-slate-300 dark:border-slate-700 text-sm" />
+        <select value={kind} onChange={(e) => setKind(e.target.value as typeof kind)} className={`${input} min-w-[13rem]`}>
+          <option value="busy">Blocked — not bookable</option>
+          <option value="bookable">Bookable — anyone may book</option>
+          <option value="bookable-staff">Bookable staff — colleagues only</option>
+        </select>
+        <input type="date" value={day} onChange={(e) => setDay(e.target.value)} className={input} />
+        <input type="time" value={start} onChange={(e) => setStart(e.target.value)} className={input} />
         <span className="text-slate-400 pb-2">–</span>
-        <input type="time" value={end} onChange={(e) => setEnd(e.target.value)}
-          className="px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#0b0b0f] border border-slate-300 dark:border-slate-700 text-sm" />
-        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (optional, staff only)"
-          className="flex-1 min-w-[10rem] px-3 py-2 rounded-lg bg-slate-50 dark:bg-[#0b0b0f] border border-slate-300 dark:border-slate-700 text-sm" />
+        <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} className={input} />
+        {!bookable && (
+          <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (optional, staff only)"
+            className={`${input} flex-1 min-w-[10rem]`} />
+        )}
         <button
           type="button"
           disabled={busy}
@@ -495,20 +540,31 @@ function BusyForm({
               await onSubmit({
                 startsAtUtc: zonedToUtcIso(day, start, timeZone),
                 endsAtUtc: zonedToUtcIso(day, end, timeZone),
-                reason: reason.trim() || undefined,
+                reason: bookable ? undefined : reason.trim() || undefined,
+                kind,
               });
               setReason('');
             } catch (e) {
-              onError(e instanceof Error ? e.message : 'Could not block that time.');
+              onError(e instanceof Error ? e.message : 'Could not add that time.');
             } finally {
               setBusy(false);
             }
           }}
-          className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white text-sm font-medium inline-flex items-center gap-1.5"
+          className={`px-4 py-2 rounded-lg disabled:opacity-50 text-white text-sm font-medium inline-flex items-center gap-1.5 ${
+            bookable ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-700 hover:bg-slate-600'
+          }`}
         >
-          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Ban className="w-4 h-4" />} Block
+          {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : bookable ? <CalendarCheck className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
+          {bookable ? 'Add window' : 'Block'}
         </button>
       </div>
+      <p className="mt-2 text-[11px] text-slate-400">
+        {bookable
+          ? <>While any bookable windows exist, the assistant offers <strong>only</strong> those hours and the working week is ignored.
+              {kind === 'bookable-staff' && ' Staff windows are offered only to callers on the calendar’s staff list.'}
+              {linkedTo ? ` It is copied to your ${linkedTo} within seconds, marked free, and you can edit or delete it in either place.` : ''}</>
+          : 'Blocked time is never offered to a caller. Your own reason is shown to staff here, never to a visitor.'}
+      </p>
     </div>
   );
 }

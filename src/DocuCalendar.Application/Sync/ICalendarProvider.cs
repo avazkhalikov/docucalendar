@@ -16,7 +16,8 @@ public sealed record TokenSet(string AccessToken, string? RefreshToken, DateTime
 
 public sealed record RemoteAccount(string Email, string? DisplayName);
 
-public sealed record RemoteEventDraft(string Subject, string Body, DateTimeOffset StartUtc, DateTimeOffset EndUtc);
+/// <param name="ShowAsFree">A bookable WINDOW, not an appointment: it must not make the person look busy to colleagues.</param>
+public sealed record RemoteEventDraft(string Subject, string Body, DateTimeOffset StartUtc, DateTimeOffset EndUtc, bool ShowAsFree = false);
 
 /// <summary>The provider no longer accepts our credentials — the person has to sign in again.
 /// Distinct from a passing failure so the sync can stop retrying something that will never work.</summary>

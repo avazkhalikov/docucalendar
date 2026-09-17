@@ -20,13 +20,15 @@ public sealed class ScheduleController : StaffControllerBase
     private readonly CalendarDbContext _db;
     private readonly BookingService _booking;
     private readonly SyncScheduler _scheduler;
+    private readonly CalendarSyncService _sync;
     private readonly ILogger<ScheduleController> _logger;
 
-    public ScheduleController(CalendarDbContext db, BookingService booking, SyncScheduler scheduler, ILogger<ScheduleController> logger)
+    public ScheduleController(CalendarDbContext db, BookingService booking, SyncScheduler scheduler, CalendarSyncService sync, ILogger<ScheduleController> logger)
     {
         _db = db;
         _booking = booking;
         _scheduler = scheduler;
+        _sync = sync;
         _logger = logger;
     }
 
@@ -93,6 +95,18 @@ public sealed class ScheduleController : StaffControllerBase
                 local = SlotEngine.FormatLocal(b.StartsAt, zone),
                 reason = b.Source == "manual" || seesMirroredTitles ? b.Reason : null,
                 b.Source,
+                // Whether this period BLOCKS time or OPENS it. Sent explicitly rather than left to
+                // be guessed from the reason, which is hidden from everyone but the calendar's own
+                // person — without it a window reads to them as blocked time, its exact opposite.
+                kind = BookableWindows.KindOf(b.Reason) switch
+                {
+                    BookableKind.Public => "bookable",
+                    BookableKind.Staff => "bookable-staff",
+                    _ => "busy",
+                },
+                // A window created here and copied into the person's own calendar: deleting it here
+                // deletes it there too, which the page should be able to say before they click.
+                pushedTo = b.PushedEventId == null ? null : b.PushedProvider,
             }),
             appointments = appointments.Select(a => new
             {
@@ -103,6 +117,7 @@ public sealed class ScheduleController : StaffControllerBase
                 minutes = (int)(a.EndsAt - a.StartsAt).TotalMinutes,
                 a.VisitorName,
                 a.VisitorPhone,
+                a.CallerPhone,
                 a.Topic,
                 a.ServiceName,
                 answers = BookingService.ParseAnswers(a.AnswersJson).Select(x => new { x.Question, x.Answer }),
@@ -113,6 +128,12 @@ public sealed class ScheduleController : StaffControllerBase
         });
     }
 
+    /// <summary>
+    /// Marks a period as blocked, or as hours the assistant may book. Both are the same row: a
+    /// bookable window is a period whose reason IS the keyword, which is what makes a window
+    /// created here and one typed into Outlook the same thing to every reader of this table.
+    /// A window is also copied out to the person's own calendar on the next sync.
+    /// </summary>
     [HttpPost("{calendarId:guid}/busy")]
     public async Task<IActionResult> AddBusy(Guid calendarId, [FromBody] BusyRequest body, CancellationToken ct)
     {
@@ -121,21 +142,35 @@ public sealed class ScheduleController : StaffControllerBase
         if (calendar == null) return NotFound();
         if (!CanManage(calendar)) return NotYours();
         if (body.EndsAtUtc <= body.StartsAtUtc)
-            return BadRequest(new { message = "The end of a busy period must come after its start." });
+            return BadRequest(new { message = "The end must come after the start." });
+
+        // "bookable" / "bookable-staff" name the keyword for the caller, so the page never has to
+        // spell it — and a reason typed by hand that happens to read "Bookable" still counts,
+        // because the keyword is the rule wherever it comes from.
+        var reason = body.Kind switch
+        {
+            "bookable" => BookableWindows.Keyword,
+            "bookable-staff" => BookableWindows.StaffKeyword,
+            _ => string.IsNullOrWhiteSpace(body.Reason) ? null : body.Reason!.Trim(),
+        };
 
         var block = new BusyBlock
         {
             CalendarId = calendarId,
             StartsAt = body.StartsAtUtc.ToUniversalTime(),
             EndsAt = body.EndsAtUtc.ToUniversalTime(),
-            Reason = string.IsNullOrWhiteSpace(body.Reason) ? null : body.Reason!.Trim(),
+            Reason = reason,
             Source = "manual",
         };
         _db.BusyBlocks.Add(block);
         await _db.SaveChangesAsync(ct);
-        _logger.LogInformation("[Schedule] {Tenant}: {User} marked {Start:u}–{End:u} busy on \"{Label}\".",
-            TenantId, DisplayName, block.StartsAt, block.EndsAt, calendar.Label);
-        return Ok(new { id = block.Id });
+
+        var kind = BookableWindows.KindOf(reason);
+        if (kind != null) _scheduler.Nudge(calendarId); // so the copy reaches Outlook in seconds, not on the interval
+        _logger.LogInformation("[Schedule] {Tenant}: {User} added {Start:u}–{End:u} on \"{Label}\" as {What}.",
+            TenantId, DisplayName, block.StartsAt, block.EndsAt, calendar.Label,
+            kind == null ? "blocked time" : $"a {reason} window");
+        return Ok(new { id = block.Id, bookable = kind != null });
     }
 
     [HttpDelete("busy/{id:guid}")]
@@ -152,6 +187,11 @@ public sealed class ScheduleController : StaffControllerBase
         // next sync and the person would rightly wonder what they had done wrong.
         if (block.Source != "manual")
             return BadRequest(new { message = $"This time comes from {SourceName(block.Source)} — change it there." });
+
+        // A window that was copied into the person's own Outlook or Google goes from there too:
+        // leaving it behind would tell them they are still available when they are not.
+        if (block.PushedEventId is { Length: > 0 } pushedId && block.PushedProvider is { Length: > 0 } pushedProvider)
+            await _sync.TryDeleteRemoteEventAsync(block.CalendarId, pushedProvider, pushedId, ct);
 
         _db.BusyBlocks.Remove(block);
         await _db.SaveChangesAsync(ct);
@@ -229,6 +269,8 @@ public sealed class ScheduleController : StaffControllerBase
         public DateTimeOffset StartsAtUtc { get; set; }
         public DateTimeOffset EndsAtUtc { get; set; }
         public string? Reason { get; set; }
+        /// <summary>"bookable", "bookable-staff", or anything else for ordinary blocked time.</summary>
+        public string? Kind { get; set; }
     }
 
     public sealed class ManualBookingRequest

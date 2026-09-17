@@ -25,5 +25,15 @@ public class BusyBlock
     /// <summary>The remote event's id, so the sync can match a mirrored block to its source.</summary>
     public string? ExternalId { get; set; }
 
+    /// <summary>
+    /// The opposite direction: when a bookable window is created HERE, the sync puts a matching
+    /// event in the person's own Outlook or Google (named "Bookable", marked free) and remembers
+    /// its id here. That id also tells the pull to skip the event, or we would mirror our own
+    /// window back in as a second block. Null for everything that came the other way.
+    /// </summary>
+    public string? PushedEventId { get; set; }
+    public string? PushedProvider { get; set; }
+    public DateTimeOffset? PushedAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

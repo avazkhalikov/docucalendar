@@ -285,3 +285,22 @@ must be at least nine digits and the tail of the longer); a withheld or unknown 
 public hours only, as does any booking from the website or chat. Both kinds of window are mirrored
 whether marked Free or Busy, and both behave the same otherwise: while any exist, the working week
 is ignored; meetings and appointments inside them still block.
+
+### Two-way windows (2026-09-17)
+
+Windows are no longer read-only from Outlook. The Schedule page's **Add time** form offers three
+kinds — blocked, bookable, bookable staff — and the last two are stored exactly as an Outlook one
+would be: a `BusyBlock` whose `Reason` IS the keyword. That is why both directions agree without a
+second concept, and why a window typed here and one typed in Outlook behave identically to every
+reader of the table (`LoadWindowsAsync` and `LoadBusyAsync` were already source-agnostic).
+
+Outward: the sync pushes manual window blocks to the linked provider as an event named `Bookable`
+/ `Bookable staff`, **marked free** (`RemoteEventDraft.ShowAsFree` → Graph `showAs=free`, Google
+`transparency=transparent`), and remembers the remote id on `BusyBlock.PushedEventId` (migration
+`AddPushedWindows`). That id joins `ourIds` on the next pull, or we would mirror our own window
+back in as a second block — the same phantom the appointment ids prevent. Deleting a window here
+deletes the copy there (`CalendarSyncService.TryDeleteRemoteEventAsync`, best effort: a provider
+outage must not stop somebody deleting their own window).
+
+The week view now gets an explicit `kind` per block, because the reason is hidden from everyone but
+the calendar's own person — without it a window rendered as blocked time, its exact opposite.

@@ -206,7 +206,7 @@ public sealed class GoogleCalendarProvider : ICalendarProvider
             description = draft.Body,
             start = new { dateTime = draft.StartUtc.ToUniversalTime().ToString("o") },
             end = new { dateTime = draft.EndUtc.ToUniversalTime().ToString("o") },
-            transparency = "opaque",
+            transparency = draft.ShowAsFree ? "transparent" : "opaque",
             extendedProperties = new { @private = new { docucalendar = "1" } },
         };
         using var resp = await http.PostAsJsonAsync($"{ApiBase}/calendars/primary/events", body, ct);

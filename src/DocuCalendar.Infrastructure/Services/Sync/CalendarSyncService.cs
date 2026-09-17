@@ -67,6 +67,30 @@ public sealed class CalendarSyncService
     /// <paramref name="waitForLock"/> is for the "Sync now" button: a person pressing it deserves
     /// a result, not "try again", so it waits briefly for a running sync to finish.
     /// </summary>
+    /// <summary>
+    /// Deletes one event we created in the person's own calendar — used when a bookable window is
+    /// removed here and its copy in Outlook or Google must go with it. Best effort by design: a
+    /// provider outage must not stop somebody deleting their own window, and a copy left behind is
+    /// visible and deletable by hand, whereas a window that refuses to disappear is neither.
+    /// </summary>
+    public async Task<bool> TryDeleteRemoteEventAsync(Guid calendarId, string providerKey, string eventId, CancellationToken ct)
+    {
+        try
+        {
+            var conn = await _db.ExternalConnections.FirstOrDefaultAsync(c => c.CalendarId == calendarId && c.Provider == providerKey, ct);
+            var provider = _providers.FirstOrDefault(p => string.Equals(p.Key, providerKey, StringComparison.OrdinalIgnoreCase));
+            if (conn == null || provider == null) return false;
+
+            var access = await EnsureAccessTokenAsync(conn, provider, ct);
+            return await provider.DeleteEventAsync(access, eventId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "[Sync] Could not delete the pushed event {Event} on calendar {Calendar}.", eventId, calendarId);
+            return false;
+        }
+    }
+
     public async Task<SyncRunResult> SyncCalendarAsync(Guid calendarId, CancellationToken ct, bool waitForLock = false)
     {
         var gate = _scheduler.LockFor(calendarId);
@@ -194,6 +218,15 @@ public sealed class CalendarSyncService
                     .ToListAsync(ct))
                 .ToHashSet(StringComparer.Ordinal);
 
+            // Bookable windows created HERE and pushed out are ours too. Without this the next pull
+            // reads back the "Bookable" event we just wrote and mirrors it in as a second window —
+            // the same phantom the appointment ids above were added to prevent.
+            foreach (var id in await _db.BusyBlocks
+                         .Where(b => b.CalendarId == calendarId && b.PushedEventId != null && b.PushedProvider == provider.Key)
+                         .Select(b => b.PushedEventId!)
+                         .ToListAsync(ct))
+                ourIds.Add(id);
+
             // "Busy mirrored" as the UI reports it: the person's own events, not our copies.
             pulled = remote.Count(e => e.IsBusy && !e.IsCancelled && !ourIds.Contains(e.Id) && !BookableWindows.IsBookable(e.Subject));
 
@@ -268,6 +301,33 @@ public sealed class CalendarSyncService
                 a.ExternalSyncedAt = DateTimeOffset.UtcNow;
                 pushed++;
                 await _db.SaveChangesAsync(ct); // one at a time: a failure mid-list must not forget the ids already minted
+            }
+
+            // Bookable windows entered HERE go the other way too, so a person sees their own
+            // availability in Outlook or Google and can manage it in whichever place they happen
+            // to be. Marked FREE: a window that made them look busy would be the opposite of what
+            // it means. Ordinary blocked time is not pushed — that is their own business, and it
+            // usually came from that calendar in the first place.
+            var windowsToPush = await _db.BusyBlocks
+                .Where(b => b.CalendarId == calendarId && b.Source == "manual" && b.PushedEventId == null
+                            && b.Reason != null && b.EndsAt > now)
+                .OrderBy(b => b.StartsAt)
+                .ToListAsync(ct);
+            foreach (var w in windowsToPush)
+            {
+                var kind = BookableWindows.KindOf(w.Reason);
+                if (kind == null) continue;
+                var draft = new RemoteEventDraft(
+                    Subject: kind == BookableKind.Staff ? BookableWindows.StaffKeyword : BookableWindows.Keyword,
+                    Body: "Hours the assistant may book. Created in the appointment calendar; editable in either place.",
+                    StartUtc: w.StartsAt,
+                    EndUtc: w.EndsAt,
+                    ShowAsFree: true);
+                w.PushedEventId = await provider.CreateEventAsync(access, draft, ct);
+                w.PushedProvider = provider.Key;
+                w.PushedAt = DateTimeOffset.UtcNow;
+                pushed++;
+                await _db.SaveChangesAsync(ct);
             }
 
             var toDelete = await _db.Appointments

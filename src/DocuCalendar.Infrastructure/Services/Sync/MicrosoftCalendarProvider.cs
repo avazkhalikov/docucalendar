@@ -211,8 +211,9 @@ public sealed class MicrosoftCalendarProvider : ICalendarProvider
             body = new { contentType = "text", content = draft.Body },
             start = new { dateTime = draft.StartUtc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss"), timeZone = "UTC" },
             end = new { dateTime = draft.EndUtc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss"), timeZone = "UTC" },
-            showAs = "busy",
-            isReminderOn = true,
+            // A window is marked free so colleagues do not see the person as busy; an appointment is busy.
+            showAs = draft.ShowAsFree ? "free" : "busy",
+            isReminderOn = !draft.ShowAsFree,
             reminderMinutesBeforeStart = 15,
         };
         using var resp = await http.PostAsJsonAsync($"{GraphBase}/me/events", body, ct);

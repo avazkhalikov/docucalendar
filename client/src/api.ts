@@ -125,6 +125,10 @@ export interface BusyRow {
   local: string;
   reason: string | null;
   source: string;
+  /** "busy" blocks the time; "bookable" / "bookable-staff" OPEN it for the assistant. */
+  kind?: string;
+  /** The provider this window was copied to, when it was created here. */
+  pushedTo?: string | null;
 }
 
 export interface AppointmentRow {
@@ -134,7 +138,10 @@ export interface AppointmentRow {
   local: string;
   minutes: number;
   visitorName: string;
+  /** The number the visitor GAVE. */
   visitorPhone: string;
+  /** The number the call actually came from. Null for web, chat, manual, or a withheld caller ID. */
+  callerPhone?: string | null;
   topic: string | null;
   /** The calendar's service that was booked, when it has any. */
   serviceName?: string | null;
@@ -142,6 +149,27 @@ export interface AppointmentRow {
   answers?: Array<{ question: string; answer: string }>;
   channel: string;
   status: string;
+}
+
+/** One row of the account-wide Appointments list: an appointment plus which calendar it is on. */
+export interface AppointmentListRow extends AppointmentRow {
+  calendarId: string;
+  calendarLabel: string;
+  notifyEmail?: string | null;
+  cancelledByName?: string | null;
+  decidedByName?: string | null;
+  createdAt: string;
+}
+
+export interface AppointmentsResponse {
+  timeZone: string;
+  total: number;
+  page: number;
+  pageSize: number;
+  from: string;
+  to: string;
+  calendars: Array<{ id: string; label: string; active: boolean }>;
+  appointments: AppointmentListRow[];
 }
 
 export interface WeekResponse {
@@ -292,7 +320,8 @@ export const api = {
 
   week: (calendarId: string, fromIso: string, days: number) =>
     call<WeekResponse>(`/schedule/${calendarId}?from=${encodeURIComponent(fromIso)}&days=${days}`),
-  addBusy: (calendarId: string, body: { startsAtUtc: string; endsAtUtc: string; reason?: string }) =>
+  /** kind: "bookable" | "bookable-staff" makes it a window the assistant may book; anything else blocks the time. */
+  addBusy: (calendarId: string, body: { startsAtUtc: string; endsAtUtc: string; reason?: string; kind?: string }) =>
     call<{ id: string }>(`/schedule/${calendarId}/busy`, { method: 'POST', body: JSON.stringify(body) }),
   removeBusy: (id: string) => call<{ removed: boolean }>(`/schedule/busy/${id}`, { method: 'DELETE' }),
   addAppointment: (
@@ -302,6 +331,14 @@ export const api = {
   /** Accept or decline a pending request; the caller is texted the answer by Docurest. */
   decideAppointment: (id: string, confirm: boolean) =>
     call<{ status: string }>(`/schedule/appointments/${id}/${confirm ? 'confirm' : 'decline'}`, { method: 'POST' }),
+  /** Every appointment on the account (owner) or on one's own calendars, across calendars. */
+  appointments: (params: {
+    from?: string; to?: string; calendarId?: string; status?: string; search?: string; page?: number; pageSize?: number;
+  }) => {
+    const q = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') q.set(k, String(v)); });
+    return call<AppointmentsResponse>(`/appointments?${q.toString()}`);
+  },
   cancelAppointment: (id: string) =>
     call<{ cancelled: boolean }>(`/schedule/appointments/${id}/cancel`, { method: 'POST' }),
 

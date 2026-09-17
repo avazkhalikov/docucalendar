@@ -109,4 +109,31 @@ public class BookableWindowsTests
 
         Assert.Single(plan.BlocksToAdd);
     }
+
+    // ---- created here, pushed out there ----
+
+    [Fact]
+    public void AWindowCreatedHereIsPushedAsAFreeEvent_AndNotMirroredBackIn()
+    {
+        // The push writes an event named exactly "Bookable", marked free. The very next pull reads
+        // it back — and unless its id is known to be ours, the planner mirrors it in as a SECOND
+        // window. That is the phantom this guards against.
+        var ours = new RemoteEvent("pushed-1", BookableWindows.Keyword, At(10), At(11), false, IsBusy: false, IsCancelled: false);
+        var theirs = new RemoteEvent("theirs-1", "Bookable", At(14), At(15), false, IsBusy: false, IsCancelled: false);
+
+        var plan = SyncPlanner.Plan(new[] { ours, theirs }, Array.Empty<MirroredBlock>(), Array.Empty<LinkedAppointment>(), Now,
+            ownEventIds: new[] { "pushed-1" });
+
+        var added = Assert.Single(plan.BlocksToAdd);
+        Assert.Equal("theirs-1", added.Id);
+    }
+
+    [Fact]
+    public void TheKeywordIsWhatTravels_SoBothDirectionsAgree()
+    {
+        // Whatever the push writes as a subject must be read back as the same kind, or a window
+        // would change meaning on the round trip.
+        Assert.Equal(BookableKind.Public, BookableWindows.KindOf(BookableWindows.Keyword));
+        Assert.Equal(BookableKind.Staff, BookableWindows.KindOf(BookableWindows.StaffKeyword));
+    }
 }

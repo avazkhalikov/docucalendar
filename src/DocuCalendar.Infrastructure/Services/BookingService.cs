@@ -130,6 +130,10 @@ public sealed class BookingService
                 EndsAt = startUtc.AddMinutes(minutes),
                 VisitorName = visitorName,
                 VisitorPhone = visitorPhone,
+                // Kept apart from what the visitor said their number is: the two disagree more
+                // often than you would think, and the one that actually rang is the useful one
+                // when somebody needs calling back.
+                CallerPhone = string.IsNullOrWhiteSpace(callerPhone) ? null : callerPhone!.Trim(),
                 NotifyEmail = notifyEmail,
                 Topic = string.IsNullOrWhiteSpace(topic) ? null : topic!.Trim(),
                 ServiceName = service?.Name,

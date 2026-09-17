@@ -18,8 +18,17 @@ public class Appointment
     /// is a meeting nobody can confirm, chase, or cancel.</summary>
     public string VisitorName { get; set; } = string.Empty;
 
-    /// <summary>How to reach them. Read back to the caller for confirmation before the booking.</summary>
+    /// <summary>How to reach them, as the visitor GAVE it. Read back to the caller for confirmation before the booking.</summary>
     public string VisitorPhone { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The number the call actually came from (caller ID) — a different fact from
+    /// <see cref="VisitorPhone"/>, which is only what the visitor said. People give a colleague's
+    /// number, misspeak a digit, or book on somebody else's behalf. Null for web, chat and manual
+    /// bookings, and for a caller who withheld their number: then there is no caller ID to know.
+    /// </summary>
+    public string? CallerPhone { get; set; }
+
     /// <summary>A colleague's e-mail from the calendar's staff list, when the call came from their number: every outcome is e-mailed there too.</summary>
     public string? NotifyEmail { get; set; }
 
