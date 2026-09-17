@@ -14,6 +14,7 @@ import {
 import WeekGrid from '../components/WeekGrid';
 import MonthGrid from '../components/MonthGrid';
 import SyncBadge from '../components/SyncBadge';
+import BookableHelp from '../components/BookableHelp';
 
 type View = 'week' | 'month' | 'list';
 const VIEW_KEY = 'docucalendar.schedule.view';
@@ -302,6 +303,7 @@ export default function SchedulePage({ me }: { me: Me }) {
               </button>
             </div>
           )}
+          <BookableHelp />
           <div className="grid gap-3 md:grid-cols-2">
             <BusyForm
               timeZone={me.timeZoneId}
