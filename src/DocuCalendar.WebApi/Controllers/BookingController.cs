@@ -210,4 +210,79 @@ public sealed class BookingController : ControllerBase
     {
         public string? By { get; set; }
     }
+
+    /// <summary>
+    /// The owner's day and month at a glance, for Docurest's CEO pages: today's agenda across
+    /// every calendar on the account, the week's counts, and how many of this and last month's
+    /// visits the AGENT booked (any channel that is not "manual"). Same key as booking — the
+    /// data belongs to the account the key belongs to.
+    /// </summary>
+    [HttpGet("agenda")]
+    public async Task<IActionResult> Agenda([FromQuery] DateOnly? date, CancellationToken ct = default)
+    {
+        var tenant = HttpContext.Tenant();
+        TimeZoneInfo zone;
+        try { zone = TimeZoneInfo.FindSystemTimeZoneById(tenant.TimeZoneId); } catch { zone = TimeZoneInfo.Utc; }
+
+        var todayLocal = date ?? DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, zone).DateTime);
+        DateTimeOffset LocalStart(DateOnly d)
+        {
+            var dt = d.ToDateTime(TimeOnly.MinValue);
+            return new DateTimeOffset(dt, zone.GetUtcOffset(dt));
+        }
+        var mondayOffset = ((int)todayLocal.DayOfWeek + 6) % 7;
+        var dayFrom = LocalStart(todayLocal);
+        var dayTo = LocalStart(todayLocal.AddDays(1));
+        var weekEnd = LocalStart(todayLocal.AddDays(7 - mondayOffset));
+        var monthStart = LocalStart(new DateOnly(todayLocal.Year, todayLocal.Month, 1));
+        var prevMonthStart = LocalStart(new DateOnly(todayLocal.Year, todayLocal.Month, 1).AddMonths(-1));
+
+        var window = await _db.Appointments.AsNoTracking()
+            .Where(a => a.TenantId == tenant.TenantId && a.Status != "cancelled" && a.Status != "declined"
+                     && a.StartsAt >= prevMonthStart && a.StartsAt < weekEnd)
+            .Select(a => new { a.StartsAt, a.EndsAt, a.VisitorName, a.ServiceName, a.Topic, a.Channel, a.CreatedAt })
+            .ToListAsync(ct);
+
+        var today = window.Where(a => a.StartsAt >= dayFrom && a.StartsAt < dayTo)
+            .OrderBy(a => a.StartsAt)
+            .Select(a => new
+            {
+                startsAtUtc = a.StartsAt.ToUniversalTime(),
+                minutes = (int)Math.Max(5, (a.EndsAt - a.StartsAt).TotalMinutes),
+                who = a.VisitorName,
+                what = string.IsNullOrWhiteSpace(a.ServiceName) ? (a.Topic ?? "Visit") : a.ServiceName!,
+                channel = a.Channel,
+                createdAtUtc = a.CreatedAt.ToUniversalTime(),
+            }).ToList();
+
+        var week = Enumerable.Range(0, 7).Select(i =>
+        {
+            var d = todayLocal.AddDays(i - mondayOffset);
+            var from = LocalStart(d);
+            var to = LocalStart(d.AddDays(1));
+            var of = window.Where(a => a.StartsAt >= from && a.StartsAt < to).ToList();
+            return new
+            {
+                day = d.DayOfWeek.ToString()[..3],
+                date = d.Day,
+                total = of.Count,
+                byAgent = of.Count(a => a.Channel != "manual"),
+                isToday = d == todayLocal,
+            };
+        }).ToList();
+
+        int BookedByAgent(DateTimeOffset from, DateTimeOffset to) =>
+            window.Count(a => a.StartsAt >= from && a.StartsAt < to && a.Channel != "manual");
+
+        return Ok(new
+        {
+            timeZone = tenant.TimeZoneId,
+            date = todayLocal.ToString("yyyy-MM-dd"),
+            today,
+            todayByAgent = today.Count(t => t.channel != "manual"),
+            week,
+            monthBooked = BookedByAgent(monthStart, dayTo),
+            prevMonthBooked = BookedByAgent(prevMonthStart, monthStart),
+        });
+    }
 }
