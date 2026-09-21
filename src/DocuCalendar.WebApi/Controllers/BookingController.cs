@@ -1,3 +1,4 @@
+using DocuCalendar.Application.Scheduling;
 using DocuCalendar.Infrastructure.Data;
 using DocuCalendar.Infrastructure.Services;
 using DocuCalendar.WebApi.Auth;
@@ -236,6 +237,7 @@ public sealed class BookingController : ControllerBase
         var mondayOffset = ((int)todayLocal.DayOfWeek + 6) % 7;
         var dayFrom = LocalStart(todayLocal);
         var dayTo = LocalStart(todayLocal.AddDays(1));
+        var weekStart = LocalStart(todayLocal.AddDays(-mondayOffset));
         var weekEnd = LocalStart(todayLocal.AddDays(7 - mondayOffset));
         var monthStart = LocalStart(new DateOnly(todayLocal.Year, todayLocal.Month, 1));
         var prevMonthStart = LocalStart(new DateOnly(todayLocal.Year, todayLocal.Month, 1).AddMonths(-1));
@@ -243,8 +245,24 @@ public sealed class BookingController : ControllerBase
         var window = await _db.Appointments.AsNoTracking()
             .Where(a => a.TenantId == tenant.TenantId && a.Status != "cancelled" && a.Status != "declined"
                      && a.StartsAt >= prevMonthStart && a.StartsAt < weekEnd)
-            .Select(a => new { a.StartsAt, a.EndsAt, a.VisitorName, a.ServiceName, a.Topic, a.Channel, a.CreatedAt })
+            .Select(a => new { a.CalendarId, a.StartsAt, a.EndsAt, a.VisitorName, a.ServiceName, a.Topic, a.Channel, a.CreatedAt })
             .ToListAsync(ct);
+
+        // Every diary on the account, each with its own figures — several people's calendars hang
+        // off one account, and one tenant-wide total says nothing about WHOSE week is filling up.
+        var cals = await _db.Calendars.AsNoTracking()
+            .Where(c => c.TenantId == tenant.TenantId && c.Active)
+            .OrderByDescending(c => c.IsDefault).ThenBy(c => c.Label)
+            .Select(c => new { c.Id, c.Label, c.IsDefault })
+            .ToListAsync(ct);
+        var connections = await _db.ExternalConnections.AsNoTracking()
+            .Where(x => x.TenantId == tenant.TenantId)
+            .Select(x => new { x.CalendarId, x.Provider, x.AccountEmail, x.Status, x.LastSyncAt })
+            .ToListAsync(ct);
+        var labelOf = cals.ToDictionary(c => c.Id, c => c.Label);
+        var stats = AgendaStats.PerCalendar(
+            window.Select(a => new AgendaStats.Row(a.CalendarId, a.StartsAt, a.Channel)),
+            new AgendaStats.Windows(dayFrom, dayTo, weekStart, weekEnd, monthStart, prevMonthStart));
 
         var today = window.Where(a => a.StartsAt >= dayFrom && a.StartsAt < dayTo)
             .OrderBy(a => a.StartsAt)
@@ -256,6 +274,8 @@ public sealed class BookingController : ControllerBase
                 what = string.IsNullOrWhiteSpace(a.ServiceName) ? (a.Topic ?? "Visit") : a.ServiceName!,
                 channel = a.Channel,
                 createdAtUtc = a.CreatedAt.ToUniversalTime(),
+                calendarId = a.CalendarId,
+                calendar = labelOf.GetValueOrDefault(a.CalendarId, ""),
             }).ToList();
 
         var week = Enumerable.Range(0, 7).Select(i =>
@@ -286,6 +306,25 @@ public sealed class BookingController : ControllerBase
             week,
             monthBooked = BookedByAgent(monthStart, dayTo),
             prevMonthBooked = BookedByAgent(prevMonthStart, monthStart),
+            calendars = cals.Select(c =>
+            {
+                var conn = connections.FirstOrDefault(x => x.CalendarId == c.Id);
+                var s = stats.GetValueOrDefault(c.Id);
+                return new
+                {
+                    id = c.Id,
+                    label = c.Label,
+                    isDefault = c.IsDefault,
+                    provider = conn?.Provider,
+                    accountEmail = conn?.AccountEmail,
+                    syncStatus = conn?.Status,
+                    lastSyncAtUtc = conn?.LastSyncAt?.ToUniversalTime(),
+                    today = s?.Today ?? 0,
+                    week = s?.Week ?? 0,
+                    monthBooked = s?.MonthBooked ?? 0,
+                    prevMonthBooked = s?.PrevMonthBooked ?? 0,
+                };
+            }).ToList(),
         });
     }
 }
