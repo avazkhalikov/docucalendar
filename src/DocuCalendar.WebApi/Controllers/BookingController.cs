@@ -225,10 +225,13 @@ public sealed class BookingController : ControllerBase
         try { zone = TimeZoneInfo.FindSystemTimeZoneById(tenant.TimeZoneId); } catch { zone = TimeZoneInfo.Utc; }
 
         var todayLocal = date ?? DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, zone).DateTime);
+        // Always UTC out of here: these values become EF query parameters, and Npgsql refuses a
+        // DateTimeOffset carrying a non-zero offset for timestamptz — the first live call proved
+        // it with a 500. Same instant, same comparisons, acceptable everywhere.
         DateTimeOffset LocalStart(DateOnly d)
         {
             var dt = d.ToDateTime(TimeOnly.MinValue);
-            return new DateTimeOffset(dt, zone.GetUtcOffset(dt));
+            return new DateTimeOffset(dt, zone.GetUtcOffset(dt)).ToUniversalTime();
         }
         var mondayOffset = ((int)todayLocal.DayOfWeek + 6) % 7;
         var dayFrom = LocalStart(todayLocal);
