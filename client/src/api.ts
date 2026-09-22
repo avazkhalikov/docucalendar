@@ -131,6 +131,8 @@ export interface BusyRow {
   kind?: string;
   /** The provider this window was copied to, when it was created here. */
   pushedTo?: string | null;
+  /** Set when this is one occurrence of a repeat — shared by every occurrence of it. */
+  seriesId?: string | null;
 }
 
 export interface AppointmentRow {
@@ -329,9 +331,19 @@ export const api = {
   week: (calendarId: string, fromIso: string, days: number) =>
     call<WeekResponse>(`/schedule/${calendarId}?from=${encodeURIComponent(fromIso)}&days=${days}`),
   /** kind: "bookable" | "bookable-staff" makes it a window the assistant may book; anything else blocks the time. */
-  addBusy: (calendarId: string, body: { startsAtUtc: string; endsAtUtc: string; reason?: string; kind?: string }) =>
-    call<{ id: string }>(`/schedule/${calendarId}/busy`, { method: 'POST', body: JSON.stringify(body) }),
+  addBusy: (calendarId: string, body: {
+    startsAtUtc: string; endsAtUtc: string; reason?: string; kind?: string;
+    /** Weekdays to repeat on, 0 = Sunday (JavaScript's getDay()). Omit for a one-off. */
+    repeatWeekdays?: number[];
+    /** Local date (YYYY-MM-DD) the repeat runs until, inclusive. Required with repeatWeekdays. */
+    repeatUntil?: string;
+  }) =>
+    call<{ id: string; seriesId: string | null; occurrences: number }>(
+      `/schedule/${calendarId}/busy`, { method: 'POST', body: JSON.stringify(body) }),
   removeBusy: (id: string) => call<{ removed: boolean }>(`/schedule/busy/${id}`, { method: 'DELETE' }),
+  /** Removes every occurrence of a repeat that has not happened yet; the past is left alone. */
+  removeBusySeries: (seriesId: string) =>
+    call<{ removed: number; kept: number }>(`/schedule/busy/series/${seriesId}`, { method: 'DELETE' }),
   addAppointment: (
     calendarId: string,
     body: { startsAtUtc: string; minutes?: number; visitorName: string; visitorPhone: string; topic?: string },

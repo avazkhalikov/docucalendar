@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Loader2, Plus, Ban, X, Phone, MessageSquare, User, ChevronLeft, ChevronRight,
-  CalendarRange, CalendarDays, List, MousePointerClick, CalendarCheck,
+  CalendarRange, CalendarDays, List, MousePointerClick, CalendarCheck, Repeat,
 } from 'lucide-react';
 import {
   api, dayInZone, timeInZone,
@@ -172,6 +172,20 @@ export default function SchedulePage({ me }: { me: Me }) {
     }
   };
 
+  // Removing a repeat asks first: one wrong click should not silently clear a term's worth of
+  // Fridays, and the count is the only way to know how much is about to go.
+  const removeBusySeries = async (b: BusyRow) => {
+    if (!b.seriesId) return;
+    if (!globalThis.confirm('Remove every future occurrence of this repeating entry? Past days stay as they were, and any appointments already booked are kept.')) return;
+    try {
+      const result = await api.removeBusySeries(b.seriesId);
+      await load();
+      if (result.removed === 0) setError('Nothing was removed — every occurrence of that repeat is already in the past.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not remove that repeat.');
+    }
+  };
+
   const viewButton = (v: View, icon: React.ReactNode, label: string) => (
     <button
       type="button"
@@ -287,7 +301,7 @@ export default function SchedulePage({ me }: { me: Me }) {
             />
           )}
           {view === 'list' && (
-            <DayList days={days} byDay={byDay} timeZone={week.timeZone} canEdit={canEdit} onCancel={cancelAppointment} onDecide={decideAppointment} onRemoveBusy={removeBusy} />
+            <DayList days={days} byDay={byDay} timeZone={week.timeZone} canEdit={canEdit} onCancel={cancelAppointment} onDecide={decideAppointment} onRemoveBusy={removeBusy} onRemoveBusySeries={removeBusySeries} />
           )}
         </div>
       )}
@@ -343,7 +357,7 @@ export default function SchedulePage({ me }: { me: Me }) {
 
 /** The original day-by-day cards, kept as a third way of looking at the same week. */
 function DayList({
-  days, byDay, timeZone, canEdit, onCancel, onDecide, onRemoveBusy,
+  days, byDay, timeZone, canEdit, onCancel, onDecide, onRemoveBusy, onRemoveBusySeries,
 }: {
   days: string[];
   byDay: Map<string, { busy: BusyRow[]; appointments: AppointmentRow[]; free: number }>;
@@ -352,6 +366,7 @@ function DayList({
   onCancel: (a: AppointmentRow) => void;
   onDecide: (a: AppointmentRow, confirm: boolean) => void;
   onRemoveBusy: (b: BusyRow) => void;
+  onRemoveBusySeries: (b: BusyRow) => void;
 }) {
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -402,16 +417,28 @@ function DayList({
                     )}
                   </div>
                   {canEdit && b.source === 'manual' && (
-                    <button
-                      type="button"
-                      title={window
-                        ? `Remove this bookable window${b.pushedTo ? ` (also from your ${sourceName(b.pushedTo)})` : ''}`
-                        : 'Free this time up'}
-                      onClick={() => onRemoveBusy(b)}
-                      className="text-slate-400 hover:text-red-500"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {b.seriesId && (
+                        <button
+                          type="button"
+                          title="Remove every future occurrence of this repeat"
+                          onClick={() => onRemoveBusySeries(b)}
+                          className="text-[10px] px-1.5 py-0.5 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 inline-flex items-center gap-1"
+                        >
+                          <Repeat className="w-3 h-3" /> all
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        title={window
+                          ? `Remove this ${b.seriesId ? 'occurrence' : 'bookable window'}${b.pushedTo ? ` (also from your ${sourceName(b.pushedTo)})` : ''}`
+                          : 'Free this time up'}
+                        onClick={() => onRemoveBusy(b)}
+                        className="text-slate-400 hover:text-red-500"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   )}
                 </div>
                 );
@@ -495,7 +522,10 @@ function BusyForm({
   defaultStart?: string;
   /** "Outlook 365" / "Google Calendar" when this calendar is linked — a window is copied there. */
   linkedTo?: string | null;
-  onSubmit: (body: { startsAtUtc: string; endsAtUtc: string; reason?: string; kind?: string }) => Promise<void>;
+  onSubmit: (body: {
+    startsAtUtc: string; endsAtUtc: string; reason?: string; kind?: string;
+    repeatWeekdays?: number[]; repeatUntil?: string;
+  }) => Promise<void>;
   onError: (message: string) => void;
 }) {
   const [day, setDay] = useState(defaultDay);
@@ -504,6 +534,10 @@ function BusyForm({
   const [reason, setReason] = useState('');
   const [kind, setKind] = useState<'busy' | 'bookable' | 'bookable-staff'>('busy');
   const [busy, setBusy] = useState(false);
+  // "Every Friday, 14:00–17:00, until the end of term" — stored as the days it means.
+  const [repeats, setRepeats] = useState(false);
+  const [repeatDays, setRepeatDays] = useState<number[]>([]);
+  const [repeatUntil, setRepeatUntil] = useState('');
 
   useEffect(() => setDay(defaultDay), [defaultDay]);
   useEffect(() => {
@@ -535,7 +569,7 @@ function BusyForm({
         )}
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || (repeats && (repeatDays.length === 0 || !repeatUntil))}
           onClick={async () => {
             setBusy(true);
             try {
@@ -544,6 +578,8 @@ function BusyForm({
                 endsAtUtc: zonedToUtcIso(day, end, timeZone),
                 reason: bookable ? undefined : reason.trim() || undefined,
                 kind,
+                repeatWeekdays: repeats && repeatDays.length > 0 ? repeatDays : undefined,
+                repeatUntil: repeats && repeatDays.length > 0 ? repeatUntil : undefined,
               });
               setReason('');
             } catch (e) {
@@ -560,7 +596,62 @@ function BusyForm({
           {bookable ? 'Add window' : 'Block'}
         </button>
       </div>
+      <div className="mt-2.5">
+        <label className="inline-flex items-center gap-2 text-[12px] text-slate-700 dark:text-slate-300 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={repeats}
+            onChange={(e) => {
+              setRepeats(e.target.checked);
+              // Start from the weekday they already picked: "every Friday" almost always means
+              // the Friday on the form, and pre-ticking it saves the obvious click.
+              if (e.target.checked && repeatDays.length === 0 && day)
+                setRepeatDays([new Date(`${day}T12:00:00`).getDay()]);
+            }}
+          />
+          Repeat weekly
+        </label>
+
+        {repeats && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <div className="flex gap-1">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((name, n) => {
+                const on = repeatDays.includes(n);
+                return (
+                  <button
+                    type="button"
+                    key={name}
+                    onClick={() => setRepeatDays((prev) => (prev.includes(n) ? prev.filter((d) => d !== n) : [...prev, n].sort()))}
+                    className={`w-11 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
+                      on
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-slate-50 dark:bg-[#0b0b0f] border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    {name}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-[12px] text-slate-500 dark:text-slate-400">until</span>
+            <input
+              type="date"
+              value={repeatUntil}
+              min={day}
+              onChange={(e) => setRepeatUntil(e.target.value)}
+              className={input}
+            />
+            {repeatDays.length > 0 && !repeatUntil && (
+              <span className="text-[11px] text-amber-600 dark:text-amber-400">Pick the last date.</span>
+            )}
+          </div>
+        )}
+      </div>
+
       <p className="mt-2 text-[11px] text-slate-400">
+        {repeats && repeatDays.length > 0 && repeatUntil && (
+          <>Each chosen day from {day} to {repeatUntil} gets its own entry, {start}–{end}. You can remove the whole set later, or just one day.{' '}</>
+        )}
         {bookable
           ? <>While any bookable windows exist, the assistant offers <strong>only</strong> those hours and the working week is ignored.
               {kind === 'bookable-staff' && ' Staff windows are offered only to callers on the calendar’s staff list.'}

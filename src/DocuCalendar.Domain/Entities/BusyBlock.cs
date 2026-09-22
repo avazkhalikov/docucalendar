@@ -35,5 +35,16 @@ public class BusyBlock
     public string? PushedProvider { get; set; }
     public DateTimeOffset? PushedAt { get; set; }
 
+    /// <summary>
+    /// Shared by every occurrence of a repeating entry — "every Friday, 14:00–17:00" is written
+    /// as one row per Friday, all carrying this id.
+    ///
+    /// Real rows rather than a rule expanded at read time, deliberately: the slot engine, the
+    /// grids and the push into the person's own Outlook already understand a row, and none of
+    /// them should have to learn recurrence to keep working. The id is what lets the whole series
+    /// be shown, and removed, as one thing.
+    /// </summary>
+    public Guid? SeriesId { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

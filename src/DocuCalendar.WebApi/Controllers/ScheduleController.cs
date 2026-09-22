@@ -107,6 +107,9 @@ public sealed class ScheduleController : StaffControllerBase
                 // A window created here and copied into the person's own calendar: deleting it here
                 // deletes it there too, which the page should be able to say before they click.
                 pushedTo = b.PushedEventId == null ? null : b.PushedProvider,
+                // Set when this is one occurrence of a repeat, so the page can offer to remove
+                // the whole series rather than making somebody delete thirty Fridays by hand.
+                b.SeriesId,
             }),
             appointments = appointments.Select(a => new
             {
@@ -154,23 +157,63 @@ public sealed class ScheduleController : StaffControllerBase
             _ => string.IsNullOrWhiteSpace(body.Reason) ? null : body.Reason!.Trim(),
         };
 
-        var block = new BusyBlock
+        var start = body.StartsAtUtc.ToUniversalTime();
+        var end = body.EndsAtUtc.ToUniversalTime();
+        var kind = BookableWindows.KindOf(reason);
+
+        // A repeat becomes one row per day it names. The first occurrence keeps the exact times
+        // that were asked for; the rest shift by whole days, so a window stays at the same
+        // wall-clock time on each date even across a daylight-saving change.
+        var weekdays = RepeatRule.WeekdaysFrom(body.RepeatWeekdays);
+        var blocks = new List<BusyBlock>();
+        Guid? seriesId = null;
+
+        if (weekdays.Count > 0)
         {
-            CalendarId = calendarId,
-            StartsAt = body.StartsAtUtc.ToUniversalTime(),
-            EndsAt = body.EndsAtUtc.ToUniversalTime(),
-            Reason = reason,
-            Source = "manual",
-        };
-        _db.BusyBlocks.Add(block);
+            if (body.RepeatUntil is not { } until)
+                return BadRequest(new { message = "A repeat needs a date to repeat until." });
+
+            var zone = TenantService.ZoneOf(await _db.Tenants.AsNoTracking().FirstAsync(t => t.TenantId == TenantId, ct));
+            var firstLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(start, zone).DateTime);
+            var days = RepeatRule.Weekly(firstLocal, until, weekdays);
+            if (days.Count == 0)
+                return BadRequest(new { message = "That repeat covers no days — check the weekdays and the end date." });
+
+            seriesId = Guid.NewGuid();
+            foreach (var day in days)
+            {
+                var shift = day.DayNumber - firstLocal.DayNumber;
+                blocks.Add(new BusyBlock
+                {
+                    CalendarId = calendarId,
+                    StartsAt = start.AddDays(shift),
+                    EndsAt = end.AddDays(shift),
+                    Reason = reason,
+                    Source = "manual",
+                    SeriesId = seriesId,
+                });
+            }
+        }
+        else
+        {
+            blocks.Add(new BusyBlock
+            {
+                CalendarId = calendarId,
+                StartsAt = start,
+                EndsAt = end,
+                Reason = reason,
+                Source = "manual",
+            });
+        }
+
+        _db.BusyBlocks.AddRange(blocks);
         await _db.SaveChangesAsync(ct);
 
-        var kind = BookableWindows.KindOf(reason);
         if (kind != null) _scheduler.Nudge(calendarId); // so the copy reaches Outlook in seconds, not on the interval
-        _logger.LogInformation("[Schedule] {Tenant}: {User} added {Start:u}–{End:u} on \"{Label}\" as {What}.",
-            TenantId, DisplayName, block.StartsAt, block.EndsAt, calendar.Label,
+        _logger.LogInformation("[Schedule] {Tenant}: {User} added {Count} × {Start:u}–{End:u} on \"{Label}\" as {What}.",
+            TenantId, DisplayName, blocks.Count, start, end, calendar.Label,
             kind == null ? "blocked time" : $"a {reason} window");
-        return Ok(new { id = block.Id, bookable = kind != null });
+        return Ok(new { id = blocks[0].Id, bookable = kind != null, seriesId, occurrences = blocks.Count });
     }
 
     [HttpDelete("busy/{id:guid}")]
@@ -196,6 +239,41 @@ public sealed class ScheduleController : StaffControllerBase
         _db.BusyBlocks.Remove(block);
         await _db.SaveChangesAsync(ct);
         return Ok(new { removed = true });
+    }
+
+    /// <summary>
+    /// Removes a repeating entry — every occurrence of it that has not already happened.
+    ///
+    /// The past is left alone on purpose: those hours were genuinely offered or genuinely
+    /// blocked, and rewriting them would make last week's calendar disagree with what actually
+    /// happened. Appointments already taken inside a removed window stay booked; this withdraws
+    /// the offer, it does not cancel anybody's visit.
+    /// </summary>
+    [HttpDelete("busy/series/{seriesId:guid}")]
+    public async Task<IActionResult> RemoveBusySeries(Guid seriesId, CancellationToken ct)
+    {
+        var blocks = await _db.BusyBlocks.Where(b => b.SeriesId == seriesId).ToListAsync(ct);
+        if (blocks.Count == 0) return NotFound();
+
+        var calendarId = blocks[0].CalendarId;
+        var calendar = await _db.Calendars.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == calendarId && c.TenantId == TenantId, ct);
+        if (calendar == null) return NotFound();
+        if (!CanManage(calendar)) return NotYours();
+
+        var now = DateTimeOffset.UtcNow;
+        var doomed = blocks.Where(b => b.Source == "manual" && b.EndsAt > now).ToList();
+
+        foreach (var block in doomed)
+            if (block.PushedEventId is { Length: > 0 } pushedId && block.PushedProvider is { Length: > 0 } pushedProvider)
+                await _sync.TryDeleteRemoteEventAsync(block.CalendarId, pushedProvider, pushedId, ct);
+
+        _db.BusyBlocks.RemoveRange(doomed);
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation("[Schedule] {Tenant}: {User} removed {Count} future occurrence(s) of a series on \"{Label}\".",
+            TenantId, DisplayName, doomed.Count, calendar.Label);
+        return Ok(new { removed = doomed.Count, kept = blocks.Count - doomed.Count });
     }
 
     /// <summary>A staff member booking somebody in by hand — the same rules as the AI, deliberately:
@@ -271,6 +349,10 @@ public sealed class ScheduleController : StaffControllerBase
         public string? Reason { get; set; }
         /// <summary>"bookable", "bookable-staff", or anything else for ordinary blocked time.</summary>
         public string? Kind { get; set; }
+        /// <summary>Weekdays to repeat on, 0 = Sunday. Null or empty means a one-off.</summary>
+        public List<int>? RepeatWeekdays { get; set; }
+        /// <summary>The last local date a repeat covers. Required when RepeatWeekdays is given.</summary>
+        public DateOnly? RepeatUntil { get; set; }
     }
 
     public sealed class ManualBookingRequest
