@@ -59,6 +59,14 @@ public sealed class BookingController : ControllerBase
                 tenant.TenantId, calendarHint, string.Join(", ", resolved.BookableLabels));
             return Ok(new { unknownStaff = true, requested = calendarHint, bookable = resolved.BookableLabels });
         }
+        if (resolved.MustChoose)
+        {
+            // Several people take appointments on this line and the caller named none of them.
+            // Answering with one diary is what made an account of three calendars sound like one.
+            _logger.LogInformation("[Booking] {Tenant}: {Count} calendars serve this context; asking the caller to choose.",
+                tenant.TenantId, resolved.BookableLabels.Count);
+            return Ok(new { chooseFrom = resolved.BookableLabels });
+        }
         var calendar = resolved.Calendar;
         if (calendar == null)
             return Ok(new { noCalendar = true, message = "No calendar is set up for this context." });
@@ -76,6 +84,10 @@ public sealed class BookingController : ControllerBase
             timeZone = tenant.TimeZoneId,
             slotMinutes = calendar.SlotMinutes,
             maxMinutes = calendar.MaxMinutes,
+            // Everyone who takes appointments here, not just the calendar this answer is about.
+            // An assistant asked "who can I see?" has no other way to learn the roster, and
+            // answering with only the default calendar's owner is how three people become one.
+            bookable = resolved.BookableLabels,
             slots = slots.Select(s => new { startsAtUtc = s.StartsAtUtc, local = s.Local }),
             script = new
             {

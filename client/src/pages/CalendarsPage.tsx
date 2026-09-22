@@ -6,7 +6,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import {
-  api, connectUrl, embedded, type CalendarRow, type Me, type Person, type SyncConnection, type SyncProvider, type SyncProviderKey,
+  api, API_BASE, connectUrl, embedded, type CalendarRow, type Me, type Person, type SyncConnection, type SyncProvider, type SyncProviderKey,
 } from '../api';
 
 import WeekEditor from '../components/WeekEditor';
@@ -42,6 +42,10 @@ export default function CalendarsPage({ me }: { me: Me }) {
   const [open, setOpen] = useState<string | null>(null);
   const [newLabel, setNewLabel] = useState('');
   const [newOwnerId, setNewOwnerId] = useState('');
+  // Where a new calendar will be offered, chosen as it is created — a calendar nobody assigned
+  // exists but is volunteered to no caller, which is only ever discovered by telephone.
+  const [newContextIds, setNewContextIds] = useState<string[]>([]);
+  const [contexts, setContexts] = useState<Array<{ tenantContextId: string; domain: string }>>([]);
   const [creating, setCreating] = useState(false);
   const [people, setPeople] = useState<Person[]>([]);
   const [providers, setProviders] = useState<SyncProvider[]>([]);
@@ -62,6 +66,12 @@ export default function CalendarsPage({ me }: { me: Me }) {
     // A missing list is not an error — it just means Docurest has not pushed the team yet, and the
     // picker falls back to "Mine", which is what a single-handed account wants anyway.
     api.people().then((r) => setPeople(r.people)).catch(() => setPeople([]));
+    // The knowledge bases a new calendar can serve; absent until Docurest has pushed them, in
+    // which case the picker simply does not appear and Assistant booking can set it later.
+    fetch(`${API_BASE}/contexts`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : { contexts: [] }))
+      .then((r) => setContexts(r.contexts ?? []))
+      .catch(() => setContexts([]));
     api.syncProviders().then((r) => setProviders(r.providers)).catch(() => setProviders([]));
     api.bookingTemplates().then((r) => setTemplates(r.templates)).catch(() => setTemplates([]));
     void loadSync();
@@ -108,9 +118,11 @@ export default function CalendarsPage({ me }: { me: Me }) {
       await api.createCalendar({
         label: newLabel.trim(),
         ownerUserId: newOwnerId.trim() || undefined,
+        contextIds: newContextIds,
       });
       setNewLabel('');
       setNewOwnerId('');
+      setNewContextIds([]);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create the calendar.');
@@ -181,6 +193,46 @@ export default function CalendarsPage({ me }: { me: Me }) {
               {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Create
             </button>
           </div>
+
+          {contexts.length > 0 && (
+            <div className="mt-3">
+              <label className="block text-[11px] text-slate-500 dark:text-slate-400 mb-1.5">
+                Where should the assistant offer it?
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {contexts.map((ctx) => {
+                  const on = newContextIds.includes(ctx.tenantContextId);
+                  return (
+                    <label
+                      key={ctx.tenantContextId}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] cursor-pointer transition-colors ${
+                        on
+                          ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-100'
+                          : 'bg-slate-50 dark:bg-[#0b0b0f] text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900/60'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={on}
+                        onChange={() => setNewContextIds((prev) =>
+                          prev.includes(ctx.tenantContextId)
+                            ? prev.filter((id) => id !== ctx.tenantContextId)
+                            : [...prev, ctx.tenantContextId])}
+                        className="w-3.5 h-3.5 rounded accent-emerald-600"
+                      />
+                      {ctx.domain}
+                    </label>
+                  );
+                })}
+              </div>
+              {newContextIds.length === 0 && (
+                <p className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+                  Tick none and the assistant never suggests this calendar — a caller would have to ask for it by name.
+                  You can change this later on Assistant booking.
+                </p>
+              )}
+            </div>
+          )}
           <p className="mt-2 text-[11px] text-slate-400 flex items-start gap-1">
             <Info className="w-3.5 h-3.5 mt-px shrink-0" />
             {me.role !== 'owner'

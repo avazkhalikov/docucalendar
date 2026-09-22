@@ -92,14 +92,26 @@ export default function MonthGrid({
                     <span className="tabular-nums">{timeInZone(a.startsAtUtc, timeZone)}</span> {a.visitorName}
                   </div>
                 ))}
-                {shownBusy.map((b) => (
-                  <div
-                    key={`${b.id}-${day}`}
-                    className="truncate rounded px-1 text-[10px] bg-slate-200/80 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 border-l-2 border-slate-400"
-                  >
-                    <span className="tabular-nums">{timeInZone(b.startsAtUtc, timeZone)}</span> {b.reason ?? 'Busy'}
-                  </div>
-                ))}
+                {shownBusy.map((b) => {
+                  // Bookable windows OPEN time for callers; drawn as blocked time they read as
+                  // the exact opposite of what they do.
+                  const isWindow = b.kind === 'bookable' || b.kind === 'bookable-staff';
+                  return (
+                    <div
+                      key={`${b.id}-${day}`}
+                      className={`truncate rounded px-1 text-[10px] border-l-2 ${
+                        isWindow
+                          ? 'bg-emerald-500/15 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-200 border-emerald-500'
+                          : 'bg-slate-200/80 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300 border-slate-400'
+                      }`}
+                    >
+                      <span className="tabular-nums">{timeInZone(b.startsAtUtc, timeZone)}</span>{' '}
+                      {isWindow
+                        ? (b.kind === 'bookable-staff' ? 'Bookable — staff' : 'Bookable')
+                        : (b.reason ?? 'Busy')}
+                    </div>
+                  );
+                })}
                 {overflow > 0 && <div className="px-1 text-[10px] text-slate-400">+{overflow} more</div>}
               </div>
             </button>

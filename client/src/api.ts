@@ -36,6 +36,8 @@ export interface CalendarRow {
   minLeadMinutes: number;
   horizonDays: number;
   weeklyAvailability: string;
+  /** The knowledge bases this calendar serves. Empty = offered on no line (bookable only by name). */
+  contextIds: string[];
   /** How this calendar takes appointments beyond name + phone, as JSON; null = the standard way. */
   bookingScript: string | null;
   active: boolean;
@@ -303,10 +305,16 @@ export const api = {
   calendars: () => call<CalendarsResponse>('/calendars'),
   /** Ready-made scripts for common kinds of business; choosing one fills the form, Save writes it. */
   bookingTemplates: () => call<{ templates: BookingTemplate[] }>('/calendars/templates'),
-  createCalendar: (body: { label: string; ownerUserId?: string }) =>
+  createCalendar: (body: { label: string; ownerUserId?: string; contextIds?: string[] }) =>
     call<{ id: string }>('/calendars', { method: 'POST', body: JSON.stringify(body) }),
   updateCalendar: (id: string, body: Record<string, unknown>) =>
     call<{ saved: boolean }>(`/calendars/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  /** The whole list of knowledge bases this calendar serves; replaces whatever was there. */
+  setCalendarContexts: (id: string, contextIds: string[]) =>
+    call<{ saved: boolean; contextIds: string[] }>(`/calendars/${id}/contexts`, {
+      method: 'PUT',
+      body: JSON.stringify({ contextIds }),
+    }),
   /** Deletes a calendar nothing was ever booked in; retires one that has appointments. */
   removeCalendar: (id: string) =>
     call<{ deleted?: boolean; retired?: boolean }>(`/calendars/${id}`, { method: 'DELETE' }),

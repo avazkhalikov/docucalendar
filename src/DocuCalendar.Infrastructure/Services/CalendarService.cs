@@ -21,45 +21,76 @@ public sealed class CalendarService
     /// Booking a caller who asked for "Professor Karimov" into the owner's diary and calling it
     /// a meeting with the professor is worse than declining: it is a promise nobody will keep.
     /// </summary>
-    public sealed record Resolution(StaffCalendar? Calendar, bool UnknownStaff, IReadOnlyList<string> BookableLabels);
+    public sealed record Resolution(
+        StaffCalendar? Calendar, bool UnknownStaff, IReadOnlyList<string> BookableLabels, bool MustChoose = false);
 
     /// <summary>
     /// Resolution order, most specific first:
-    /// 1. the visitor named someone ("the admissions officer") and a calendar label matches;
-    /// 2. the visitor named someone and NOTHING matches → refused, with who can be booked instead;
-    /// 3. the context's own default;
-    /// 4. the account-wide fallback.
-    /// A null calendar with no unknown-staff flag means nothing is set up — exactly when the AI
-    /// must not offer booking at all.
+    /// 1. the caller named someone ("the admissions officer") and a calendar serving this context matches;
+    /// 2. they named someone and nothing here matches → refused, with who CAN be booked instead;
+    /// 3. exactly one calendar serves this context → that one;
+    /// 4. several do → nobody is chosen (<see cref="Resolution.MustChoose"/>): the assistant reads
+    ///    the names out and asks, because choosing silently is how three connected calendars
+    ///    became one name on the phone.
+    /// A null calendar with neither flag means nothing is set up for this context — exactly when
+    /// the AI must not offer booking at all.
+    ///
+    /// Everything is scoped to the CONTEXT: a calendar serving admissions is not one the intranet
+    /// line may offer, and its owner's name is not read out there.
     /// </summary>
     public async Task<Resolution> ResolveAsync(string tenantId, Guid? contextId, string? hint, CancellationToken ct)
     {
         var active = await _db.Calendars.AsNoTracking()
             .Where(c => c.TenantId == tenantId && c.Active)
             .ToListAsync(ct);
-        var labels = active.OrderBy(c => c.Label).Select(c => c.Label).ToList();
-        if (active.Count == 0) return new Resolution(null, false, labels);
+        if (active.Count == 0) return new Resolution(null, false, Array.Empty<string>());
+
+        var serving = await ServingAsync(tenantId, contextId, active, ct);
+        return Decide(serving, hint);
+    }
+
+    /// <summary>
+    /// The decision itself, given the calendars serving a context — kept pure so the rules can be
+    /// tested without a database, which is where they belong: each branch here is somebody's day.
+    /// </summary>
+    public static Resolution Decide(IReadOnlyList<StaffCalendar> serving, string? hint)
+    {
+        var labels = serving.OrderBy(c => c.Label).Select(c => c.Label).ToList();
+        if (serving.Count == 0) return new Resolution(null, false, labels);
 
         if (!string.IsNullOrWhiteSpace(hint))
         {
-            var matched = MatchByLabel(active, hint!);
+            var matched = MatchByLabel(serving, hint!);
             if (matched != null) return new Resolution(matched, false, labels);
-            // Only people and desks with calendars here can be booked. A name from a document,
-            // an email address, a lecturer the caller once met — none of those is a calendar.
+            // Only people and desks serving THIS context can be booked here. A name from a
+            // document, an email address, a colleague who works another line — none of those is a
+            // calendar this caller may be booked into.
             return new Resolution(null, true, labels);
         }
 
-        var defaults = await _db.ContextDefaults.AsNoTracking()
-            .Where(d => d.TenantId == tenantId)
+        if (serving.Count == 1) return new Resolution(serving[0], false, labels);
+
+        // Several people take appointments here and the caller named none of them. Ask.
+        return new Resolution(null, false, labels, MustChoose: true);
+    }
+
+    /// <summary>
+    /// The calendars serving one context. A calendar is offered automatically only where its
+    /// owner put it; one assigned to no context can still be booked by name from a context it
+    /// serves, but is never volunteered — an unassigned calendar is a state for the UI to show,
+    /// not a fallback to guess around.
+    /// </summary>
+    private async Task<List<StaffCalendar>> ServingAsync(
+        string tenantId, Guid? contextId, List<StaffCalendar> active, CancellationToken ct)
+    {
+        if (contextId is not { } ctx) return new List<StaffCalendar>();
+
+        var ids = await _db.CalendarContexts.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && x.TenantContextId == ctx)
+            .Select(x => x.CalendarId)
             .ToListAsync(ct);
 
-        var forContext = contextId is { } ctx
-            ? defaults.FirstOrDefault(d => d.TenantContextId == ctx)
-            : null;
-        var fallback = defaults.FirstOrDefault(d => d.TenantContextId == null);
-
-        var chosen = forContext ?? fallback;
-        return new Resolution(chosen == null ? null : active.FirstOrDefault(c => c.Id == chosen.CalendarId), false, labels);
+        return active.Where(c => ids.Contains(c.Id)).ToList();
     }
 
     /// <summary>

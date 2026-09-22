@@ -47,6 +47,15 @@ public sealed class CalendarsController : StaffControllerBase
             .Where(d => d.TenantId == TenantId)
             .ToListAsync(ct);
 
+        // Which knowledge bases each calendar serves. A calendar may serve several, and a
+        // knowledge base may be served by several calendars.
+        var links = await _db.CalendarContexts.AsNoTracking()
+            .Where(x => x.TenantId == TenantId)
+            .Select(x => new { x.CalendarId, x.TenantContextId })
+            .ToListAsync(ct);
+        var contextsOf = links.GroupBy(x => x.CalendarId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.TenantContextId).ToList());
+
         // Whether removing a calendar would delete it or merely retire it — the page says which
         // before anybody clicks, rather than surprising them afterwards.
         var withAppointments = (await _db.Appointments.AsNoTracking()
@@ -94,6 +103,7 @@ public sealed class CalendarsController : StaffControllerBase
                 bookingScript = c.BookingScriptJson,
                 c.Active,
                 c.IsDefault,
+                contextIds = contextsOf.GetValueOrDefault(c.Id, new List<Guid>()),
             }),
             contextDefaults = defaults.Select(d => new { d.TenantContextId, d.CalendarId }),
         });
@@ -129,9 +139,33 @@ public sealed class CalendarsController : StaffControllerBase
             .AnyAsync(c => c.TenantId == TenantId && c.OwnerUserId == calendar.OwnerUserId && c.Active && c.IsDefault, ct);
 
         _db.Calendars.Add(calendar);
+
+        // Where this calendar is offered, chosen as it is created: a calendar nobody assigned to
+        // a knowledge base is bookable by name and volunteered to no one, which is a confusing
+        // thing to discover later by telephone.
+        var wanted = (body.ContextIds ?? new List<Guid>()).Distinct().ToList();
+        if (wanted.Count > 0)
+        {
+            var known = await _db.KnownContexts.AsNoTracking()
+                .Where(k => k.TenantId == TenantId)
+                .Select(k => k.TenantContextId)
+                .ToListAsync(ct);
+            if (wanted.Any(w => !known.Contains(w)))
+                return BadRequest(new { message = "One of those knowledge bases is not on this account." });
+
+            foreach (var ctx in wanted)
+                _db.CalendarContexts.Add(new CalendarContext
+                {
+                    TenantId = TenantId,
+                    CalendarId = calendar.Id,
+                    TenantContextId = ctx,
+                });
+        }
+
         await _db.SaveChangesAsync(ct);
-        _logger.LogInformation("[Calendars] {Tenant}: created \"{Label}\".", TenantId, calendar.Label);
-        return Ok(new { id = calendar.Id });
+        _logger.LogInformation("[Calendars] {Tenant}: created \"{Label}\", serving {Count} knowledge base(s).",
+            TenantId, calendar.Label, wanted.Count);
+        return Ok(new { id = calendar.Id, contextIds = wanted });
     }
 
     /// <summary>
@@ -308,6 +342,59 @@ public sealed class CalendarsController : StaffControllerBase
         return Ok(new { saved = true });
     }
 
+    /// <summary>
+    /// Which knowledge bases this calendar serves. Sent whole — the list given here replaces
+    /// whatever was there — so the page never has to reason about which ticks changed.
+    ///
+    /// The owner decides for everyone; a person may set their own calendar's contexts, because
+    /// an operator who connects their Outlook should not have to ask permission to appear on the
+    /// line they already answer.
+    /// </summary>
+    [HttpPut("{id:guid}/contexts")]
+    public async Task<IActionResult> SetContexts(Guid id, [FromBody] CalendarContextsRequest body, CancellationToken ct)
+    {
+        var calendar = await _db.Calendars.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == id && c.TenantId == TenantId, ct);
+        if (calendar == null) return NotFound(new { message = "No such calendar on this account." });
+        if (!CanManage(calendar)) return StatusCode(StatusCodes.Status403Forbidden,
+            new { message = "Only the account owner, or the person this calendar belongs to, can change where it is offered." });
+
+        var wanted = (body.ContextIds ?? new List<Guid>()).Distinct().ToList();
+
+        // Only contexts this account actually has — a stale id from an old tab must not create a
+        // link to a knowledge base that no longer exists.
+        if (wanted.Count > 0)
+        {
+            var known = await _db.KnownContexts.AsNoTracking()
+                .Where(k => k.TenantId == TenantId)
+                .Select(k => k.TenantContextId)
+                .ToListAsync(ct);
+            var unknown = wanted.Where(w => !known.Contains(w)).ToList();
+            if (unknown.Count > 0)
+                return BadRequest(new { message = "One of those knowledge bases is not on this account." });
+        }
+
+        var existing = await _db.CalendarContexts
+            .Where(x => x.TenantId == TenantId && x.CalendarId == id)
+            .ToListAsync(ct);
+
+        foreach (var gone in existing.Where(x => !wanted.Contains(x.TenantContextId)))
+            _db.CalendarContexts.Remove(gone);
+
+        foreach (var added in wanted.Where(w => existing.All(x => x.TenantContextId != w)))
+            _db.CalendarContexts.Add(new CalendarContext
+            {
+                TenantId = TenantId,
+                CalendarId = id,
+                TenantContextId = added,
+            });
+
+        await _db.SaveChangesAsync(ct);
+        _logger.LogInformation("[Calendars] {Tenant}: \"{Label}\" now serves {Count} knowledge base(s).",
+            TenantId, calendar.Label, wanted.Count);
+        return Ok(new { saved = true, contextIds = wanted });
+    }
+
     /// <summary>Shared by create and update so one validation rule cannot drift between them.</summary>
     private static void Apply(CalendarRequest body, StaffCalendar calendar, out string? error)
     {
@@ -378,6 +465,8 @@ public sealed class CalendarsController : StaffControllerBase
     public sealed class CalendarRequest
     {
         public string? Label { get; set; }
+        /// <summary>Knowledge bases this calendar serves. Honoured on create; use PUT {id}/contexts to change.</summary>
+        public List<Guid>? ContextIds { get; set; }
         /// <summary>The staff list as JSON [{name, phone}]; empty string clears it. See StaffCallers.</summary>
         public string? StaffCallers { get; set; }
         /// <summary>"Ask me before confirming": bookings become requests when the caller can be told the answer.</summary>
@@ -398,5 +487,11 @@ public sealed class CalendarsController : StaffControllerBase
     {
         public Guid? TenantContextId { get; set; }
         public Guid? CalendarId { get; set; }
+    }
+
+    public sealed class CalendarContextsRequest
+    {
+        /// <summary>The whole list this calendar should serve; empty means "offered nowhere".</summary>
+        public List<Guid>? ContextIds { get; set; }
     }
 }

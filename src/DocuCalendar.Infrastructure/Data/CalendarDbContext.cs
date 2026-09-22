@@ -10,6 +10,7 @@ public class CalendarDbContext : DbContext
     public DbSet<TenantRegistration> Tenants => Set<TenantRegistration>();
     public DbSet<StaffCalendar> Calendars => Set<StaffCalendar>();
     public DbSet<ContextDefault> ContextDefaults => Set<ContextDefault>();
+    public DbSet<CalendarContext> CalendarContexts => Set<CalendarContext>();
     public DbSet<BusyBlock> BusyBlocks => Set<BusyBlock>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
     public DbSet<KnownContext> KnownContexts => Set<KnownContext>();
@@ -68,12 +69,24 @@ public class CalendarDbContext : DbContext
             e.HasIndex(c => c.OwnerUserId);
         });
 
+        // Superseded by CalendarContext: kept so the old routing can still be read back if the
+        // move to many-per-context ever has to be undone. Nothing reads it any more.
         b.Entity<ContextDefault>(e =>
         {
             e.HasKey(d => d.Id);
             e.Property(d => d.TenantId).HasMaxLength(100).IsRequired();
             // One default per context, and one account-wide fallback (TenantContextId null).
             e.HasIndex(d => new { d.TenantId, d.TenantContextId }).IsUnique();
+        });
+
+        b.Entity<CalendarContext>(e =>
+        {
+            e.HasKey(d => d.Id);
+            e.Property(d => d.TenantId).HasMaxLength(100).IsRequired();
+            // A calendar serves a context once; ticking it twice states the same fact.
+            e.HasIndex(d => new { d.CalendarId, d.TenantContextId }).IsUnique();
+            // The question asked on every call: who serves this context?
+            e.HasIndex(d => new { d.TenantId, d.TenantContextId });
         });
 
         b.Entity<KnownContext>(e =>

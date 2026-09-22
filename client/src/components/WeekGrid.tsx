@@ -1,5 +1,5 @@
 import { useMemo, type MouseEvent, type ReactNode } from 'react';
-import { Ban, Phone, MessageSquare, User, X } from 'lucide-react';
+import { Ban, CalendarCheck, Phone, MessageSquare, User, X } from 'lucide-react';
 import type { AppointmentRow, BusyRow, WeekResponse } from '../api';
 import { dayInZone, timeInZone } from '../api';
 import { clipToDay, formatDay, isWeekend, nowMinutesInZone } from '../time';
@@ -152,20 +152,32 @@ export default function WeekGrid({
                   />
                 ))}
 
-                {d.busy.map(({ item, start, end }) => (
-                  <Block
-                    key={`b-${item.id}-${start}`}
-                    top={y(start)}
-                    height={y(end) - y(start)}
-                    tone="busy"
-                    icon={<Ban className="w-3 h-3 shrink-0 mt-px" />}
-                    title={item.reason ?? (item.source === 'manual' ? 'Blocked' : 'Busy')}
-                    subtitle={`${timeInZone(item.startsAtUtc, timeZone)}–${timeInZone(item.endsAtUtc, timeZone)}${item.source !== 'manual' ? ` · ${sourceName(item.source)}` : ''}`}
-                    hint={`${item.reason ?? 'Busy'} · ${timeInZone(item.startsAtUtc, timeZone)}–${timeInZone(item.endsAtUtc, timeZone)}${item.source !== 'manual' ? ` · from ${sourceName(item.source)}` : ''}`}
-                    onRemove={canEdit && item.source === 'manual' ? () => onRemoveBusy(item) : undefined}
-                    removeTitle="Free this time up"
-                  />
-                ))}
+                {d.busy.map(({ item, start, end }) => {
+                  // A bookable window is the opposite of blocked time and must never look like
+                  // it — the same rule the list view already follows.
+                  const isWindow = item.kind === 'bookable' || item.kind === 'bookable-staff';
+                  const windowName = item.kind === 'bookable-staff' ? 'Bookable — staff only' : 'Bookable';
+                  const times = `${timeInZone(item.startsAtUtc, timeZone)}–${timeInZone(item.endsAtUtc, timeZone)}`;
+                  const from = item.source !== 'manual' ? ` · ${sourceName(item.source)}` : '';
+                  return (
+                    <Block
+                      key={`b-${item.id}-${start}`}
+                      top={y(start)}
+                      height={y(end) - y(start)}
+                      tone={isWindow ? 'window' : 'busy'}
+                      icon={isWindow
+                        ? <CalendarCheck className="w-3 h-3 shrink-0 mt-px" />
+                        : <Ban className="w-3 h-3 shrink-0 mt-px" />}
+                      title={isWindow ? windowName : (item.reason ?? (item.source === 'manual' ? 'Blocked' : 'Busy'))}
+                      subtitle={`${times}${from}`}
+                      hint={isWindow
+                        ? `${windowName} — these hours are OFFERED to callers · ${times}${from}`
+                        : `${item.reason ?? 'Busy'} · ${times}${from}`}
+                      onRemove={canEdit && item.source === 'manual' ? () => onRemoveBusy(item) : undefined}
+                      removeTitle={isWindow ? 'Remove this bookable window' : 'Free this time up'}
+                    />
+                  );
+                })}
 
                 {d.appts.map(({ item, start, end }) => (
                   <Block
@@ -205,8 +217,9 @@ export default function WeekGrid({
 
       <div className="flex items-center gap-4 px-3 py-2 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-400">
         <span className="inline-flex items-center gap-1"><i className="w-2.5 h-2.5 rounded-sm bg-emerald-500/30" /> could be offered to a caller</span>
+        <span className="inline-flex items-center gap-1"><i className="w-2.5 h-2.5 rounded-sm border-l-2 border-emerald-500 bg-emerald-500/20" /> bookable window</span>
         <span className="inline-flex items-center gap-1"><i className="w-2.5 h-2.5 rounded-sm bg-blue-500/50" /> appointment</span>
-        <span className="inline-flex items-center gap-1"><i className="w-2.5 h-2.5 rounded-sm bg-slate-400/60" /> busy</span>
+        <span className="inline-flex items-center gap-1"><i className="w-2.5 h-2.5 rounded-sm bg-slate-400/60" /> busy or blocked</span>
         {canEdit && <span className="ml-auto hidden sm:inline">click an empty spot to block it or book someone</span>}
       </div>
     </div>
@@ -218,7 +231,7 @@ function Block({
 }: {
   top: number;
   height: number;
-  tone: 'busy' | 'appt' | 'cancelled';
+  tone: 'busy' | 'window' | 'appt' | 'cancelled';
   icon: ReactNode;
   title: string;
   subtitle: string;
@@ -229,6 +242,7 @@ function Block({
   const px = Math.max(height, 14);
   const tones: Record<typeof tone, string> = {
     busy: 'bg-slate-200/90 dark:bg-slate-700/70 border-slate-400 text-slate-700 dark:text-slate-200',
+    window: 'bg-emerald-500/20 dark:bg-emerald-500/25 border-emerald-500 text-emerald-900 dark:text-emerald-100',
     appt: 'bg-blue-500/15 dark:bg-blue-500/20 border-blue-500 text-blue-900 dark:text-blue-100',
     cancelled: 'bg-slate-100 dark:bg-slate-800/40 border-slate-300 dark:border-slate-600 text-slate-400 line-through',
   };
