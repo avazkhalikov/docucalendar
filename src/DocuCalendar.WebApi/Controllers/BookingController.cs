@@ -253,10 +253,14 @@ public sealed class BookingController : ControllerBase
         var weekEnd = LocalStart(todayLocal.AddDays(7 - mondayOffset));
         var monthStart = LocalStart(new DateOnly(todayLocal.Year, todayLocal.Month, 1));
         var prevMonthStart = LocalStart(new DateOnly(todayLocal.Year, todayLocal.Month, 1).AddMonths(-1));
+        var monthEnd = LocalStart(new DateOnly(todayLocal.Year, todayLocal.Month, 1).AddMonths(1));
+        // The window reaches the end of the WHOLE month, not just the week: the month grid below counts
+        // every day of it, and a day past this week's Sunday would otherwise fall outside and read as empty.
+        var windowEnd = weekEnd > monthEnd ? weekEnd : monthEnd;
 
         var window = await _db.Appointments.AsNoTracking()
             .Where(a => a.TenantId == tenant.TenantId && a.Status != "cancelled" && a.Status != "declined"
-                     && a.StartsAt >= prevMonthStart && a.StartsAt < weekEnd)
+                     && a.StartsAt >= prevMonthStart && a.StartsAt < windowEnd)
             .Select(a => new { a.CalendarId, a.StartsAt, a.EndsAt, a.VisitorName, a.ServiceName, a.Topic, a.Channel, a.CreatedAt })
             .ToListAsync(ct);
 
@@ -306,6 +310,17 @@ public sealed class BookingController : ControllerBase
             };
         }).ToList();
 
+        // Every day of the selected day's month, so a caller can draw a month grid and let the owner
+        // pick a day; each pick is another call with ?date=, which fills `today` for that day.
+        var month = Enumerable.Range(1, DateTime.DaysInMonth(todayLocal.Year, todayLocal.Month)).Select(dayNo =>
+        {
+            var d = new DateOnly(todayLocal.Year, todayLocal.Month, dayNo);
+            var from = LocalStart(d);
+            var to = LocalStart(d.AddDays(1));
+            var of = window.Where(a => a.StartsAt >= from && a.StartsAt < to).ToList();
+            return new { date = d.ToString("yyyy-MM-dd"), day = dayNo, total = of.Count, byAgent = of.Count(a => a.Channel != "manual") };
+        }).ToList();
+
         int BookedByAgent(DateTimeOffset from, DateTimeOffset to) =>
             window.Count(a => a.StartsAt >= from && a.StartsAt < to && a.Channel != "manual");
 
@@ -316,6 +331,7 @@ public sealed class BookingController : ControllerBase
             today,
             todayByAgent = today.Count(t => t.channel != "manual"),
             week,
+            month,
             monthBooked = BookedByAgent(monthStart, dayTo),
             prevMonthBooked = BookedByAgent(prevMonthStart, monthStart),
             calendars = cals.Select(c =>
