@@ -156,7 +156,7 @@ export default function CalendarsPage({ me }: { me: Me }) {
       <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#101016] p-4">
           <h2 className="text-sm font-medium mb-2">{me.role === 'owner' ? 'Add a calendar' : 'Add your calendar'}</h2>
           <div className="flex flex-wrap items-end gap-2">
-            <div className="flex-1 min-w-[16rem]">
+            <div className="flex-1 min-w-0 sm:min-w-[16rem]">
               <label className="block text-[11px] text-slate-500 dark:text-slate-400 mb-1">Label</label>
               <input
                 value={newLabel}
@@ -166,7 +166,7 @@ export default function CalendarsPage({ me }: { me: Me }) {
               />
             </div>
             {me.role === 'owner' && (
-            <div className="min-w-[16rem]">
+            <div className="w-full sm:w-auto sm:min-w-[16rem]">
               <label className="block text-[11px] text-slate-500 dark:text-slate-400 mb-1">Whose calendar is it?</label>
               <select
                 value={newOwnerId}

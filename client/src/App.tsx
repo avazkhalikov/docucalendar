@@ -77,7 +77,9 @@ export default function App() {
             </div>
           )}
 
-          <nav className="flex items-center gap-1">
+          {/* The six links wrap on a phone (2026-10-24): one unbroken row was wider than the screen, and iOS lays an embedded
+              page out at its widest line — Docurest's frame then showed a slice of the calendar. */}
+          <nav className="flex items-center gap-1 flex-wrap">
             <NavLink to="/calendars" className={navClass}>
               <span className="inline-flex items-center gap-1.5"><Users className="w-4 h-4" /> Calendars</span>
             </NavLink>

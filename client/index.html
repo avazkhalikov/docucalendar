@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -11,6 +11,31 @@
       token, treats it as unset, and asks the host's own API instead. See src/branding.ts.
     -->
     <script>window.__PORTAL_BRAND__ = "__PORTAL_BRAND__";</script>
+    <!--
+      The theme (2026-10-24): Docurest's own light/dark switch, not the phone's. Until now the page followed the
+      system setting, so a phone in dark mode showed a dark calendar inside a light Docurest. The embedding page
+      says which on the hand-off URL (?theme=light|dark) and again by postMessage when the person flips it; the
+      choice is remembered here; a first visit with no word from anyone follows the system as before.
+    -->
+    <script>
+      (function () {
+        var KEY = 'docucalendar_theme';
+        function apply(t) { document.documentElement.classList.toggle('dark', t === 'dark'); }
+        function remember(t) { try { localStorage.setItem(KEY, t); } catch (e) { /* no storage */ } }
+        var fromUrl = null, stored = null;
+        try { fromUrl = new URLSearchParams(window.location.search).get('theme'); } catch (e) { /* no url */ }
+        try { stored = localStorage.getItem(KEY); } catch (e) { /* no storage */ }
+        var t = (fromUrl === 'light' || fromUrl === 'dark') ? fromUrl
+          : (stored === 'light' || stored === 'dark') ? stored
+          : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        apply(t);
+        if (fromUrl === 'light' || fromUrl === 'dark') remember(fromUrl);
+        window.addEventListener('message', function (e) {
+          var d = e && e.data;
+          if (d && d.type === 'docurest-theme' && (d.theme === 'light' || d.theme === 'dark')) { apply(d.theme); remember(d.theme); }
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

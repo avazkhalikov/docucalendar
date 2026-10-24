@@ -37,7 +37,7 @@ public sealed class SessionController : ControllerBase
     /// </summary>
     [HttpGet("sso")]
     [AllowAnonymous]
-    public async Task<IActionResult> Sso([FromQuery] string? t, [FromQuery] string? next, CancellationToken ct)
+    public async Task<IActionResult> Sso([FromQuery] string? t, [FromQuery] string? next, CancellationToken ct, [FromQuery] string? theme = null)
     {
         var secret = _config["Docurest:SsoSecret"] ?? string.Empty;
         var identity = SsoToken.Verify(t, secret, DateTimeOffset.UtcNow);
@@ -87,6 +87,9 @@ public sealed class SessionController : ControllerBase
         var landing = next is { Length: > 1 and < 400 } && next.StartsWith('/') && !next.StartsWith("//") && !next.Contains('\\')
             ? next
             : "/";
+        // The theme Docurest hands over (2026-10-24): light or dark as the person set it there, carried to the page the
+        // client reads it from — never the phone's own setting, which showed a dark calendar inside a light Docurest.
+        if (theme is "light" or "dark") landing += (landing.Contains('?') ? "&" : "?") + "theme=" + theme;
         return Redirect(UiPaths.Ui(landing));
     }
 
